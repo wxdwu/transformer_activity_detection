@@ -1,0 +1,2287 @@
+
+
+===== PAGE 1 =====
+18516
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+UADFormer: A Transformer-Based Deep Learning
+Method for User Activity Detection in Cell-Free
+Massive MIMO Systems
+Zheng Sheng , Pengcheng Zhu , Member, IEEE, and Xiaohu You , Fellow, IEEE
+Abstract— Grant-free random access is a critical enabling
+technology for massive ultra-reliable and low-latency communica-
+tions (mURLLC), and user activity detection (UAD), determining
+which users are active based on received signals, is indispens-
+able in grant-free access. The cell-free massive multiple-input
+multiple-output (MIMO) system, providing macro diversity and
+supporting more users, is an architecture suitable for mURLLC.
+This paper investigates the UAD problem with changeable pilot
+sequences in cell-free massive MIMO systems, and proposes deep
+learning based UADFormer, where users are assigned to access
+points (APs) for detection using user grouping algorithm and
+transformer-based neural networks (NNs) in APs are employed
+to output user activity state by exploiting the correlation between
+received signals and pilot sequences. For users detected by
+multiple APs, a fusion NN based on transfer learning in the
+central processing unit is utilized to enhance UAD accuracy.
+Additionally, considering limited computational and storage
+resources in APs, sparse attention mechanism is used in NNs
+to reduce computational complexity and residual attention score
+is employed to improve NN performance. Simulation results
+show that UADFormer outperforms other schemes in various
+evaluation metrics and reduces computational complexity.
+Index Terms— User activity detection (UAD), cell-free massive
+multiple-input multiple-output (MIMO), deep learning, trans-
+former, ultra-reliable and low-latency communications (URLLC).
+I. INTRODUCTION
+R
+ECENTLY, massive ultra-reliable and low-latency com-
+munications (mURLLC) [1], also known as critical
+massive machine type communications (mMTC) [2], which
+integrates two key use cases in the fifth generation (5G)
+mobile communication, URLLC and mMTC [3], has attracted
+considerable attention from researchers. Specifically, URLLC
+strives to provide highly reliable connectivity (more than
+99.999%) with extremely low latency (less than 1ms) and
+Received 17 March 2024; revised 7 August 2024; accepted 24 September
+2024. Date of publication 7 October 2024; date of current version
+12 December 2024. This work was supported in part by the National Key
+Research and Development Program of China under Grant 2021YFB2900300
+and in part by the National Natural Science Foundation of China under Grant
+62171126. The associate editor coordinating the review of this article and
+approving it for publication was G. Chen. (Corresponding author: Pengcheng
+Zhu.)
+Zheng Sheng is with the National Mobile Communications Research
+Laboratory,
+Southeast
+University,
+Nanjing
+210096,
+China
+(e-mail:
+shengzheng@seu.edu.cn).
+Pengcheng Zhu and Xiaohu You are with the National Mobile Communica-
+tions Research Laboratory, Southeast University, Nanjing 210096, China, and
+also with the Purple Mountain Laboratories, Nanjing 211111, China (e-mail:
+p.zhu@seu.edu.cn; xhyu@seu.edu.cn).
+Color versions of one or more figures in this article are available at
+https://doi.org/10.1109/TWC.2024.3469970.
+Digital Object Identifier 10.1109/TWC.2024.3469970
+mMTC pursues scalable connectivity (106 devices/km2) [4],
+[5]. In fact, for many not-so-distant Internet-of-Things (IoT)
+applications, such as robotics in large factory networks and
+massive network of autonomous vehicles, both highly reliable
+wireless connectivity with extremely low latency and scal-
+able connectivity are indispensable, and research on related
+enabling technologies is promising [6].
+Grant-free access is one of the related enabling technologies
+and has received much attention [7], [8]. Compared with
+grant-based access adopted by long term evolution (LTE) stan-
+dard, which brings heavy signaling overhead and large latency
+due to its four-way handshake procedure in the scheduling
+process, grant-free access can effectively reduce signaling
+overhead and access latency since user devices can directly
+access the base station (BS) by skipping the handshake based
+grant acquisition process [9], which is highly applicable to
+mURLLC. As each user device transmits information to the BS
+without scheduling, the BS cannot directly distinguish which
+users have transmitted information. Therefore, user activity
+detection (UAD), i.e., identifying users transmitting informa-
+tion, is significant and indispensable in grant-free systems [10].
+The
+cell-free
+massive
+multiple-input
+multiple-output
+(MIMO) system, where many distributed access points (APs)
+connected to the central processing unit (CPU) serve users
+utilizing the same time-frequency resources, is considered a
+highly promising architecture. Compared to the centralized
+cellular system, the cell-free system is more suitable for
+mURLLC applications due to the following three reasons.
+First, since APs in cell-free systems usually possess the data
+processing capability [11] and there are massive users in
+the mURLLC application scenario, users can be grouped
+and each AP is only responsible for detecting a group
+of users. Compared with the computational complexity of
+detecting all users employing one BS in the centralized
+cellular system, the complexity of each AP in the cell-free
+system is reduced. Moreover, APs simultaneously detect
+the activity states of users assigned to them, i.e., through
+parallel
+processing,
+thereby
+further
+reducing
+processing
+latency. Second, UAD in the cell-free system can support
+more users than that in the centralized cellular system. When
+the number of users increases to a very large value, due to
+limited storage and computing resources in one BS, UAD
+in the centralized cellular system will reach a bottleneck,
+i.e., the base station cannot detect so many users accurately.
+In the cell-free system, more APs can be deployed and the
+number of users detected by each AP will not increase, which
+1536-1276 © 2024 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 2 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18517
+ensures the accurate detection. Third, the cell-free system,
+where multiple APs jointly serve users, can provide macro
+diversity [12], which brings robust connectivity and enhances
+communication reliability. In general, UAD in the cell-free
+system is worth studying [13].
+To deal with the UAD problem, traditional methods include
+compressed sensing (CS) based methods and covariance based
+methods [14], [15]. Exploiting sporadic active users, CS based
+methods, such as approximate message passing (AMP) [16],
+regularization based sparse optimization [17] and Bayesian
+sparse recovery [18], are employed to address joint UAD
+and channel estimation problems. When employing CS based
+methods, instantaneous channel state information (CSI) is
+required, which is not feasible in practice. Thus, covari-
+ance based methods using sample covariance matrix of the
+received signal, which exploits statistical CSI rather than
+instantaneous CSI, has been designed [19], [20]. In fact, [21]
+and [22] have demonstrated that covariance based methods
+can achieve similar performance with a much shorter length of
+pilot sequences compared with CS based methods. Although
+covariance based methods outperform CS based methods,
+in many existing works such as [19] and [20], it utilizes block
+coordinate descent methods to solve high-dimensional non-
+convex optimization problems where each user’s activity state
+is updated iteratively. This results in large processing latency
+and violates requirements of mURLLC.
+In recent years, with the rise of deep learning (DL) [23],
+many researchers have proposed DL based methods to tackle
+the UAD problem in centralized systems. DL based methods
+train a deep neural network (NN) to approximate the mapping
+from known information (including received signals and user
+pilot sequences) to activity states of all users. Compared with
+traditional methods, the deep NN can directly output all users’
+activity states without updating iteratively in the inference
+phase, hence reducing the processing latency. In [24], authors
+have proposed a model-driven DL algorithm which employs
+the NN to imitate AMP. In [9], authors have designed a
+data-driven DL approach to directly output the activity state
+with received signals as input in the inference phase. However,
+in these two papers, user pilot sequences are fixed and only
+received signals are changeable input of NNs. NNs need to
+be retrained if there is any change in the pilot sequence of
+any user, which are unsuitable for changing environments.
+Different from the previous two papers, [25] has presented
+a novel deep NN named heterogeneous transformer (HT),
+where inputs include received signals and changeable pilot
+sequences, to deal with the UAD problem in centralized sys-
+tems. Transformer was initially applied in machine translation,
+known for its ability to explore relationships between long
+sequences [26]. HT determines user activity state by uncov-
+ering correlations between received signals and changeable
+pilot sequences, and there is no need to retrain the NN as
+with the previous two methods when pilot sequences change.
+However, it is necessary to conduct transmission power control
+to eliminate impacts of large-scale fading. Otherwise, due to
+different large-scale fading coefficients, received signals from
+different users exhibit significant differences in magnitude,
+and we will fail to train the NN. Unfortunately, in cell-free
+systems, transmission power control cannot remove effects of
+large-scale fading due to the existence of multiple APs, which
+poses a challenge to applying HT in cell-free systems.
+The UAD in cell-free systems has attracted much attention
+and there have been some research works about it. In [27],
+authors have proposed a CS based scheme to conduct joint
+channel estimation and UAD in cell-free systems with coarse
+user location information. Authors in [28] have designed a
+covariance based approach with orthogonal pilot sequences
+to address the UAD problem in cell-free systems. In [29],
+exploiting characteristics of cell-free systems, authors have
+deployed NNs with fixed pilot sequences in space expansion
+units and trained a NN in CPU based on transfer learning to
+integrate judgments from all space expansion units to output
+the final result, thereby enhancing detection accuracy. How-
+ever, existing methods for cell-free systems cannot effectively
+handle the UAD problem with changeable pilot sequences.
+Specifically, when pilot sequences change, traditional methods
+in existing works require solving new non-convex optimization
+problems iteratively again and DL based approaches in current
+papers need to retrain NNs, both causing large processing
+latency.
+Inspired by above observations, this paper proposes a DL
+based method named UADFormer to solve the UAD prob-
+lem with changeable pilot sequences in cell-free systems,
+and answers two main questions: (1) how to successfully
+train a transformer-based NN in cell-free systems without
+eliminating impacts of large-scale fading; (2) how to effec-
+tively improve the accuracy of UAD by leveraging advantages
+(APs with processing capability) and considering limitations
+(limited computational and storage resources in APs) of cell-
+free systems. The novelty of our proposed UADFormer is
+mainly reflected in the following two points: (1) distributed
+architecture, i.e., deploying NNs based on lite transformer in
+APs (using sparse attention mechanism and residual attention
+score) and a fusion NN based on transfer learning in the CPU;
+(2) considering UAD as multiple binary classification prob-
+lems and an imbalanced multi-label classification problem,
+thereby choosing the most suitable loss function to accelerate
+the NN training. The major contributions of this paper are
+summarized as follows.
+1) We consider the UAD problem as multiple distinct
+imbalanced binary classification problems and an imbal-
+anced multi-label classification problem, choosing binary
+cross-entropy (BCE) and weighted binary cross-entropy
+(WBCE) as loss functions for the former, and select-
+ing zero-bounded log-sum-exp & pairwise rank-based
+(ZLPR) as the loss function for the latter. By comparing
+their performance, we choose the most suitable one to
+achieve high classification accuracy and good balance.
+2) We
+propose
+a
+user
+grouping
+algorithm
+based
+on
+large-scale fading coefficients, where each AP is respon-
+sible for detecting users with higher large-scale fading
+coefficients rather than all users. Since received signals
+from users with higher large-scale fading coefficients are
+much stronger than those from users with lower coeffi-
+cients, received signals from users with lower coefficients
+can be viewed as very weak interference and we can
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 3 =====
+18518
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+successfully train the NN without eliminating effects of
+large-scale fading.
+3) We create the UADFormer consisting of NNs in APs
+and the NN in the CPU. In each AP, the transformer-
+based NN, where inputs consist of the received signal
+and changeable pilot sequences of users assigned to this
+AP, outputs the user activity probability by employing
+transformer’s ability to explore the correlation between
+the received signal and pilot sequences.
+4) We utilize sparse attention mechanism to reduce com-
+putational and storage complexity considering limited
+computational and storage resources in APs. Specifically,
+we only calculate the attention score between each user’s
+pilot sequence and the received signal, without computing
+attention scores between this user’s pilot sequence and
+other users’ pilot sequences. Additionally, the residual
+attention score is used to enhance the performance of
+NNs deployed in APs.
+5) We design the fusion module based on transfer learning
+in the CPU for users detected by multiple APs. It takes
+judgments about the same user’s activity state from
+multiple APs as inputs and outputs the final detection
+result, which improves the accuracy of detection.
+The rest of this paper is organized as follows. The system
+model is introduced in Section II, and problem formulation
+is shown in Section III. In Section IV, we design our user
+grouping algorithm. A novel DL approach named UADFormer
+is proposed in Section V and its complexity is also analyzed
+in Section V. Simulation results are provided in Section VI,
+and Section VII concludes this paper.
+II. SYSTEM MODEL
+In the cell-free massive MIMO system under consideration,
+M APs each equipped with N antennas and K single antenna
+IoT users are located randomly in a large area. Each AP
+possesses data processing capability and all APs are connected
+to a CPU via fronthaul links. The channel gm,k ∈CN×1
+between AP m and user k can be expressed as
+gm,k =
+p
+λm,khm,k,
+(1)
+where λm,k represents a large-scale fading coefficient and
+hm,k represents the small-scale fading vector. We consider
+a rich scattering environment, so hm,k can be modeled as
+CN(0, IN).
+In the UAD problem, each user is assigned a unique uplink
+pilot sequence sk ∈CL×1 of length L and user k will transmit
+sk if it is active. The received signals Ym at AP m are
+expressed as
+Ym =
+K
+X
+k=1
+xk
+√qkskgT
+m,k + Wm
+= SX
+p
+Q
+p
+ΛmHm + Wm,
+(2)
+where xk ∈{0, 1} is the activity indicator and xk = 1 if
+user k is active (otherwise, xk = 0), qk is the transmis-
+sion power of user k, S = [s1, . . . , sK] ∈CL×K, X =
+diag {x1, . . . , xK} ∈CK×K, Q = diag {q1, . . . , qK} ∈
+CK×K, Λm = diag {λm,1, . . . , λm,K} ∈CK×K, Hm =
+[hm,1, . . . , hm,K]T
+∈CK×N, and Wm ∈CL×N repre-
+sents the Gaussian noise at AP m and each element follows
+CN(0, σ2
+m).
+Considering the entire system, the signals received by all
+APs can be written as
+Y = SX
+p
+QG + W,
+(3)
+where Y
+=
+[Y1, . . . , YM]
+∈
+CL×MN denotes signals
+received by all APs, G =
+√Λ1H1, . . . , √ΛMHM
+
+∈
+CK×MN represents the channel between all APs and all users,
+and W = [W1, . . . , WM] ∈CL×MN represents the noise at
+all APs.
+III. PROBLEM FORMULATION
+In practical applications, IoT user devices are typically
+stationary, and as a result, their large-scale fading coefficients
+remain relatively constant [19], [20], [25]. In this paper,
+we assume that the large-scale fading coefficients of users
+remain constant and can be estimated through conventional
+methods1 [30].
+A. Problem Formulation From DL Perspective
+The UAD aims to determine the activity state of each
+user with known received signals and pilot sequence assigned
+to each user. Different from CS based methods requiring
+instantaneous CSI and covariance based approaches requiring
+iterative solving, DL, utilizing the NN, strives to discover a
+mapping function that minimizes the difference between the
+output and the ground truth as much as possible when provided
+with the input. Without the need for instantaneous CSI and
+iterative solving, DL is adopted by us to deal with the UAD
+problem in this paper.
+Specifically, the NN takes the received signal matrix Y
+and the pilot sequence matrix S as inputs and generates
+the predicted user activity state vector ˆx = [ˆx1, . . . , ˆxK]T
+as the output. With the actual user activity state vector
+x = [x1, . . . , xK]T , we aspire to find the optimal mapping
+function that ensures ˆx aligns as closely as possible with
+x. The problem of designing this mapping function can be
+formulated as:
+min
+Θ
+E {L (x, ˆx)} ,
+s.t. ˆx = fΘ (Y, S) ,
+(4)
+where fΘ (Y, S) represents the mapping function that maps Y
+and S to ˆx, Θ denotes parameters of the NN including weights
+and biases, and L (x, ˆx) serves as a function that quantifies the
+disparity between x and ˆx.
+B. Classification Problems From Two Perspectives
+Since x is a binary vector of length K, we naturally
+associate it with the classification task in the field of DL,
+and the UAD problem can be regarded as K distinct binary
+classification problems or a multi-label classification problem.
+1It is worth noting that the first step of user activity detection is to connect
+all users to the network, then we estimate the large-scale fading coefficient
+between each user and each AP, and subsequently we can group all users into
+groups employing our proposed user grouping algorithm based on known
+large-scale fading coefficients.
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 4 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18519
+1) K Distinct Binary Classification Problems: In the UAD
+problem, each user is either active or inactive, so determining
+the activity state of one user can be viewed as a binary classi-
+fication problem. As there are K distinct users in the system,
+identifying activity states of all users can be considered as K
+independent binary classification problems.
+For classification problems, NNs’ outputs are typically
+probabilities and final results are obtained by comparing prob-
+abilities with thresholds. For the UAD problem, employing
+ˆp = [ˆp1, . . . , ˆpK]T to represent predicted activity probabilities
+of all K users, the final result is
+ˆxi = I(ˆpi > τ),
+(5)
+which means that if the i-th element of ˆp is greater than
+predefined threshold τ, the i-th element of ˆx is set to 1,
+otherwise set to 0.
+We utilize T to denote the training data set, where the i-th
+sample is composed of
+Y(i), S(i), x(i)
+and x(i) denotes the
+ground truth user activity state. For the binary classification
+problem, the loss function used to train NNs is typically BCE
+function, which is expressed as follows:
+LBCE = −
+|T |
+X
+i=1
+K
+X
+k=1
+
+x(i)
+k log ˆp(i)
+k + (1 −x(i)
+k ) log(1 −ˆp(i)
+k )
+
+,
+(6)
+where |T | represents the number of samples in T and log(·)
+denotes natural logarithm.
+Nevertheless, in the UAD problem, due to sporadic traffics
+of mMTC, only a small percentage of users are active. Thus,
+UAD is an imbalanced classification problem and BCE is no
+longer suitable, as it pays more attention to more numerous
+inactive users and overlooks less numerous active users, result-
+ing in overfitting to inactive class.
+To mitigate overfitting, we have fine-tuned weights of BCE
+based on the number of active users Ka, increasing the weight
+of active class to Ka/K and decreasing the weight of inactive
+class to (K −Ka)/K.2 The modified loss function called
+WBCE is written as
+LWBCE = −2
+|T |
+X
+i=1
+K
+X
+k=1
+K −Ka
+K
+x(i)
+k log ˆp(i)
+k
++Ka
+K (1 −x(i)
+k ) log(1 −ˆp(i)
+k )
+
+.
+(7)
+2) A Multi-Label Classification Problem: From a holistic
+perspective, the UAD problem can also be considered as a
+multi-label classification problem with K labels, where each
+element of the output ˆx is viewed as a label indicating whether
+the corresponding user is active. Since only a small fraction
+of users are active, this problem is an imbalanced multi-label
+classification task.
+To address imbalanced multi-label classification problems,
+recently, a novel loss function named ZLPR has been
+proposed [31]. Compared with WBCE requiring Ka that
+2The number of active users Ka is unknown in our paper but it can
+be estimated in reality through the method in Appendix A using statistical
+channel state information.
+is usually unknown in practical scenarios, ZLPR can be
+employed to train NNs when Ka is unknown. The expression
+of ZLPR is
+LZLPR =
+|T |
+X
+i=1
+ 
+log
+ 
+1 +
+K
+X
+k=1
+x(i)
+k e−a(i)
+k
+!
++ log
+ 
+1 +
+K
+X
+k=1
+(1 −x(i)
+k )ea(i)
+k
+!!
+,
+(8)
+where [a(i)
+1 , . . . , a(i)
+K ] represents the logit vector of the i-th
+sample. The relationship between ˆp(i)
+k
+and a(i)
+k
+is
+ˆp(i)
+k
+= sigmoid(a(i)
+k ) =
+1
+1 + e−a(i)
+k
+.
+(9)
+Since x(i) is a binary vector, (8) can be simplified as
+LZLPR =
+|T |
+X
+i=1
+
+
+log
+
+
+1 +
+X
+u∈∆(i)
+pos
+e−a(i)
+u
+
+
+
++ log
+
+
+1 +
+X
+v∈∆(i)
+neg
+ea(i)
+v
+
+
+
+
+
+,
+(10)
+where ∆(i)
+pos = {u|x(i)
+u = 1} and ∆(i)
+neg = {v|x(i)
+v
+= 0}. As the
+log-sum-exp operator serves as a smooth approximation to the
+maximum operator, which is proved in Appendix B, we have
+log
+ 
+1 +
+K
+X
+k=1
+ea(i)
+k
+!
+≈max(0, a(i)
+1 , . . . , a(i)
+K ),
+(11)
+and (10) can be approximated as
+LZLPR ≈
+|T |
+X
+i=1
+
+
+
+max
+
+
+
+0, −a(i)
+u , . . .
+|
+{z
+}
+u∈∆(i)
+pos
+
+
+
++ max
+
+
+
+0, a(i)
+v , . . .
+| {z }
+v∈∆(i)
+neg
+
+
+
+
+
+
+
+.
+(12)
+It can be observed from (12) that the minimum value of ZLPR
+is approximately 0 when a(i)
+u
+> 0 for all active users and
+a(i)
+v
+< 0 for all inactive users, where the detection success rate
+is 100% with τ = 0.5. Moreover, in both cases a(i)
+u < 0 and
+a(i)
+v
+> 0, ZLPR will increase equally, which avoids overfitting
+to inactive users.
+IV. USER GROUPING ALGORITHM
+Authors in [25] have proposed HT to deal with the UAD
+problem in centralized systems by conducting transmission
+power control to eliminate impacts of large-scale fading.
+However, their method cannot be directly applied to cell-free
+systems since transmission power control cannot eliminate
+effects of large-scale fading in cell-free systems. In mathe-
+matical terms, there does not exist a set {q1, . . . , qK} such
+that the equation q1λm,1 = . . . = qKλm,K for all m holds
+true. The large-scale fading coefficients of users with higher
+large-scale fading coefficients may differ by several orders of
+magnitude from those of users with lower large-scale fading
+coefficients. In extreme cases, the AP’s received signals from
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 5 =====
+18520
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+Fig. 1.
+Proposed user grouping diagram where blue users are detected by
+one AP and orange users are detected by multiple APs.
+very distant users are the same magnitude as noise, and it is
+nearly impossible to determine activity states of these very
+distant users accurately.
+Since it is difficult to accurately determine activity states
+of users with lower large-scale fading coefficients, why not
+have each AP only assess the activity states of users with
+higher large-scale fading coefficients rather than all users?
+In this detection approach, it is essential to determine which
+users have higher large-scale fading coefficients with the AP.
+The most straightforward method is to assign each user to
+the AP with the highest large-scale fading coefficient among
+all APs. However, if a user has relatively high large-scale
+fading coefficients with two or more APs, its signal will cause
+significant interference for APs with relatively high large-scale
+fading coefficients but not responsible for detecting it, thereby
+reducing the accuracy of UAD. To address this problem,
+we divide users into two categories: those who have the high
+large-scale fading coefficient only with one AP, and those who
+have relatively high large-scale fading coefficients with two or
+more APs, as illustrated in Fig. 1. The first category is detected
+by single AP, while the second category is detected by multiple
+APs.
+The main idea of our proposed user grouping algorithm is
+as follows. Each user is initially assigned to the AP having the
+highest large-scale fading coefficient with it among all APs for
+detection. Subsequently, it is determined whether the second
+highest large-scale fading coefficient is close to the highest
+large-scale fading coefficient, as well as whether the number
+of users assigned to each AP has reached its limit. This
+process continues iteratively until all users and APs have been
+traversed. Considering large-scale fading coefficients between
+users and APs, as well as the load of each AP, we propose
+our user grouping algorithm shown in Algorithm 1 in detail.
+The large-scale fading coefficients between K users and
+M APs are stored in the matrix Λ ∈RK×M and Λ(k, m)
+represents λm,k, i.e., the large-scale fading coefficient between
+user k and AP m. The user set detected by AP m is denoted
+as Um. ϵ represents the criteria for judging whether λm,k
+and maximum large-scale fading coefficient λm(1)
+k ,k for user k
+among all M APs are close, and ξ denotes the maximum num-
+ber of users that each AP can detect. Considering “argmax”
+operation and adding the user into corresponding user set as a
+basic operation, the computational complexity of Algorithm 1
+is O(MK), and even in the worst-case scenario, Algorithm 1
+can converge after MK basic operations.
+Algorithm 1 Proposed user grouping algorithm
+1: Input: Λ, Um = ∅(m = 1, . . . , M)
+2: for k = 1 : K do
+3:
+m(1)
+k
+=
+argmax
+m∈{1,...,M}
+Λ(k, m)
+4:
+Um(1)
+k
+= Um(1)
+k
+∪{k}
+5: end for
+6: for i = 2 : M do
+7:
+for k = 1 : K do
+8:
+m(i)
+k
+=
+argmax
+m∈{1,...,M}\{m(1)
+k
+,...,m(i−1)
+k
+}
+Λ(k, m)
+9:
+if Λ(k, m(1)
+k ) −Λ(k, m(i)
+k ) < ϵ & |Um(i)
+k | < ξ then
+10:
+Um(i)
+k
+= Um(i)
+k
+∪{k}
+11:
+end if
+12:
+end for
+13: end for
+14: Output: Um (m = 1, . . . , M)
+V. UADFORMER: A NOVEL DEEP LEARNING APPROACH
+BASED ON LITE TRANSFORMER AND TRANSFER
+LEARNING
+To address the UAD problem in cell-free systems, we have
+proposed a novel DL approach named UADFormer based on
+characteristics of the UAD problem and the cell-free system,
+which is shown in Fig. 2. The UADFormer consists of two
+parts: an NN in each AP based on lite transformer, and an
+NN in the CPU based on transfer learning.
+A. NN in Each AP Based on Lite Transformer
+Different from multilayer perceptrons (MLPs) and con-
+volutional neural networks (CNNs) not fully exploiting
+characteristics of the UAD problem, transformer can explore
+the correlation between Ym and Sm to identify the user
+activity state. Specifically, in (2), each column of Ym can
+be regarded as a linear combination of sk (k = 1, . . . , K)
+and coefficients are related to x. In transformer, Ym and
+Sm are respectively represented in high-dimensional space,
+and the correlation between the representation of Ym and
+the representation of each user’s pilot sequence in Sm is
+calculated. The activity state of each user detected by AP m is
+determined by the magnitude of correlation. Considering lim-
+ited computational and storage resources in APs, we propose a
+lite transformer using sparse attention mechanism with fewer
+parameters and lower computational complexity compared
+with the standard transformer.
+Since NN structures of different APs are similar, we will
+take AP m as an example to illustrate the NN. For notational
+simplicity, we have omitted the subscript m starting from the
+output of preprocessing module in this subsection.
+1) Preprocessing and Linear Projection: The structure of
+preprocessing and linear projection block is shown in Fig. 3 in
+detail. This module takes Ym and Sm as inputs and outputs
+{zm,n}Km
+n=0, which are representations of inputs after this
+module.
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 6 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18521
+Fig. 2.
+The overview of UADFormer. Ym represents the received signal of AP m. Sm = [˜sm,1, . . . , ˜sm,Km] consists of pilot sequences of users detected
+by AP m, where Km denotes the number of users detected by AP m. The logit vector of users detected by AP m is denoted by am and the activity
+probability vector of all users in the cell-free system is represented by ˆp. By comparing ˆp with the threshold, the final output ˆx can be obtained.
+Fig. 3.
+The detailed structure of preprocessing and linear projection block,
+where the projection matrix of z0 is different from others.
+As NNs can usually only handle real numbers while pilot
+sequences and received signals are complex, it is necessary to
+extract their real and imaginary parts for processing. Inspired
+by covariance based method, we utilize YmYH
+m/N instead
+of Ym as the input to the linear projection, enabling NNs
+to solve problems with different numbers of antennas. The
+output of Ym after passing through preprocessing module can
+be represented as
+zp
+0 =αp
+"
+R
+
+vec
+YmYH
+m
+N
+T
+, I
+
+vec
+YmYH
+m
+N
+T #T
+,
+(13)
+where zp
+0 ∈R2L2 and αp is a tuning hyperparameter of
+preprocessing and linear projection module which scales up
+data values for training NNs. R{·} and I{·} denote real part
+and imaginary part, respectively. The column vectorization of
+a matrix is represented by vec(·). Similarly, {zp
+n}Km
+n=1 ∈R2L,
+which is the output of ˜sm,n, can be expressed as
+zp
+n = αp
+h
+R {˜sm,n}T , I {˜sm,n}T iT
+, n = 1, . . . , Km. (14)
+Then, zp
+n will be sent to linear projection module. Since
+the received signal and pilot sequences have different physical
+meanings, two different trainable projection matrices Wp
+Y ∈
+Rd×2L2 and Wp
+S ∈Rd×2L are used to project zp
+0 and {zp
+n}Km
+n=1,
+respectively. The outputs are
+zn =
+(
+Wp
+Yzp
+0
+n = 0
+Wp
+Szp
+n
+n = 1, . . . , Km,
+(15)
+Fig. 4.
+The sparse attention transformer block, consisting of T sparse
+attention transformer encoders and residual attention scores.
+where {zn}Km
+n=0 ∈Rd and d denotes the dimension of linear
+projection module.
+2) Sparse Attention Transformer Block: The sparse atten-
+tion transformer block is the core module of UADFormer,
+which consists of T sparse attention transformer encoders and
+residual attention scores. Fig. 4 illustrates the detailed structure
+and each module will be introduced below.
+Considering limited computational and storage resources in
+APs, the sparse multi-head attention module is designed to
+replace the standard multi-head attention, and the relationship
+between the input {zn,t}Km
+n=0 ∈Rd and the output {˜zn,t}Km
+n=0 ∈
+Rd of sparse multi-head attention is
+{˜zn,t}Km
+n=0 = SMA
+
+{zn,t}Km
+n=0
+
+,
+(16)
+where SMA represents the function of the sparse multi-head
+attention module. The overall architecture of the sparse
+multi-head attention module is illustrated in Fig. 5. In order to
+fully explore the correlation between the received signal and
+each user’s pilot sequence, we employ H attention heads to
+provide greater freedom for NNs. The output of each attention
+head will be weighted and summed to obtain the final output.
+For all attention heads in the t-th transformer encoder, the
+input is {zn,t}Km
+n=0, and next, we will take the h-th head as an
+example to explain the detailed structure of attention heads.
+In the standard attention mechanism, all input tokens are
+projected as queries because there is correlation between each
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 7 =====
+18522
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+Fig. 5.
+The overall architecture of the sparse multi-head attention module.
+For notational simplicity, we have omitted the subscript t in the figure.
+token. However, in the UAD problem, only the received
+signal is related to the pilot sequence of each user while
+there is no correlation between user pilot sequences. Thus,
+in our sparse attention, only z0,t is projected as the query
+and the query projection matrix is W(h)
+Y,q,t. Different from
+the input tokens with the same physical meaning in the
+standard attention mechanism, the received signal and user
+pilot sequences have distinct physical meanings. Therefore,
+independent learnable projection matrices are assigned to z0,t
+and {zn,t}Km
+n=1. Specifically, W(h)
+Y,k,t and W(h)
+Y,v,t represent
+the key projection matrix and value projection matrix for
+z0,t respectively, while W(h)
+S,k,t and W(h)
+S,v,t separately denote
+the key projection matrix and value projection matrix for
+{zn,t}Km
+n=1. With independent learnable projection matrices,
+the projection result can be expressed as:
+q(h)
+0,t = W(h)
+Y,q,tz0,t,
+(17)
+k(h)
+n,t =
+(
+W(h)
+Y,k,tz0,t
+n = 0
+W(h)
+S,k,tzn,t
+n = 1, . . . , Km,
+(18)
+v(h)
+n,t =
+(
+W(h)
+Y,v,tz0,t
+n = 0
+W(h)
+S,v,tzn,t
+n = 1, . . . , Km,
+(19)
+where learnable projection matrices for query, key, and value
+are {W(h)
+Y,q,t, W(h)
+Y,k,t, W(h)
+S,k,t, W(h)
+Y,v,t, W(h)
+S,v,t} ∈Rd′×d and
+{q(h)
+0,t , k(h)
+n,t, v(h)
+n,t} ∈Rd′.
+For simplicity, we concatenate k(h)
+n,t and v(h)
+n,t to obtain
+K(h)
+t
+= [k(h)
+0,t , . . . , k(h)
+Km,t] and V(h)
+t
+= [v(h)
+0,t , . . . , v(h)
+Km,t].
+Then, we compute the scaled dot-product attention between
+the query q(h)
+0,t and all keys {k(h)
+n,t}Km
+n=0. The scaled attention
+score vector e(h)
+0,t ∈RKm+1 can be calculated by
+e(h)
+0,t = K(h)T
+t
+q(h)
+0,t
+√
+d′
+,
+(20)
+where K(h)
+t
+∈Rd′×(Km+1) and
+√
+d′ is the scaling factor. The
+purpose of scaling is to ensure that the value of dot product
+does not become too large due to the large dimension d′,
+thereby avoiding numerical issues such as gradient explosions.
+Inspired by RealFormer [32], the residual attention score is
+applied in our NN. The benefits of it are similar to those of the
+residual connection proposed in [33], including reducing train-
+ing difficulty and stabilizing the training in deep NNs. With
+the residual attention score, each sparse attention transformer
+encoder takes the raw attention score e(h)
+res,t from the previous
+Fig. 6. The structure of sparse attention mechanism in the h-th attention head,
+where h in the superscript and t in the subscript are omitted for notational
+simplicity expect the final output.
+encoder and adds e(h)
+0,t to it to obtain the final attention score.
+The obtained final attention score will be viewed as the raw
+attention score e(h)
+res,t+1 in the next (t + 1)-th encoder. Then,
+the final attention score is sent to the softmax function for
+normalization, which outputs the normalized attention score
+vector e(h)
+t
+. The above operations can be summarized as
+e(h)
+t
+= softmax(e(h)
+0,t + e(h)
+res,t),
+(21)
+e(h)
+res,t+1 = e(h)
+0,t + e(h)
+res,t,
+(22)
+where softmax(x) =
+h
+exp(x1)
+P exp(xi), . . . ,
+exp(xK)
+P exp(xi)
+iT
+. Multiplying
+the normalized attention score vector e(h)
+t
+by value V(h)
+t
+, the
+output of the h-th attention head for z0,t is obtained:
+˜z(h)
+0,t = V(h)
+t
+e(h)
+t
+,
+(23)
+where V(h)
+t
+∈Rd′×(Km+1) and e(h)
+t
+∈RKm+1. Since each
+user’s pilot sequence is only correlated with the received signal
+and independent of other users’ pilot sequences, the attention
+score vector of each user’s pilot sequence are all 0 except
+the score between this user’s pilot sequence and the received
+signal. After normalizing the attention score vector, the output
+of the h-th attention head for {zn,t}Km
+n=1 is
+˜z(h)
+n,t = v(h)
+0,t
+n = 1, . . . , Km.
+(24)
+The structure of sparse attention mechanism in the h-th atten-
+tion head is summarily depicted in Fig. 6, which intuitively
+demonstrates the computation process of sparse attention.
+With the output of each attention head, the final output of
+the sparse multi-head attention module can be calculated by
+weighted summation. As before, distinct projection matrices
+W(h)
+Y,t and W(h)
+S,t are utilized to project ˜z(h)
+0,t and {˜z(h)
+n,t}Km
+n=1
+back to d-dimensional vectors, respectively. As shown in
+Fig. 5, with learnable matrices {W(h)
+Y,t, W(h)
+S,t } ∈Rd×d′, the
+output of the sparse multi-head attention module is
+˜zn,t =
+
+
+
+
+
+
+
+
+
+
+
+H
+X
+h=1
+W(h)
+Y,t˜z(h)
+0,t
+n = 0
+H
+X
+h=1
+W(h)
+S,t ˜z(h)
+n,t
+n = 1, . . . , Km.
+(25)
+The Add & Norm module means the residual connection
+and batch normalization, which make it easier to train deep
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 8 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18523
+NNs. Due to the residual connection which directly passes
+the input to the output, the NN has the option to learn
+a transformation close to an identity mapping, rather than
+learning the entire mapping from scratch, thereby facilitating
+the training of deep NNs. The batch normalization is employed
+to normalize the output of each layer, giving it a zero mean
+and unit variance, which facilitates better gradient propagation
+between different layers and accelerates the training.
+The result of the residual connection is expressed as
+z′
+n,t = ˜zn,t + zn,t,
+(26)
+and the following operation is batch normalization. The output
+of Add & Norm module is ˆzn,t = BN(z′
+n,t). Next, we will
+explain the BN operation. Let {z′
+0,t,i, . . . , z′
+Km,t,i}I
+i=1 denote a
+batch of training samples with I samples, and the j-th element
+of ˆzn,t ∈Rd is
+ˆzn,t(j) =
+
+
+
+
+
+
+
+
+
+z′
+n,t(j) −µY,j
+p
+δY,j
+n = 0
+z′
+n,t(j) −µS,j
+p
+δS,j
+n = 1, . . . , Km,
+(27)
+where {µY,j, µS,j} represents the mean and {δY,j, δS,j}
+denotes the variance. They can be calculated as follows:
+µY,j = 1
+I
+I
+X
+i=1
+z′
+0,t,i(j), δY,j = 1
+I
+I
+X
+i=1
+(z′
+0,t,i(j) −µY,j)2,
+(28)
+µS,j =
+1
+IKm
+I
+X
+i=1
+Km
+X
+n=1
+z′
+n,t,i(j),
+(29)
+δS,j =
+1
+IKm
+I
+X
+i=1
+Km
+X
+n=1
+(z′
+n,t,i(j) −µS,j)2.
+(30)
+Since the sparse multi-head attention module only involves
+linear representations, the feed forward module containing
+the nonlinear activation function is added to introduce the
+nonlinear mapping capability, enabling NNs to learn more
+complex representations. Specifically, the feed forward module
+consists of a two-layer MLP, where the first layer utilizes the
+ReLU nonlinear activation function, and the second layer has
+no nonlinear activation function. The output is ¯zn,t = FF(ˆzn,t)
+and ¯zn,t ∈Rd can be computed by
+¯zn,t
+=
+(
+Wf2
+Y,tReLU(Wf1
+Y,tˆz0,t + bf1
+Y,t) + bf2
+Y,t
+n = 0
+Wf2
+S,tReLU(Wf1
+S,tˆzn,t + bf1
+S,t) + bf2
+S,t
+n = 1, . . . , Km,
+(31)
+where {Wf1
+Y,t, Wf1
+S,t} ∈Rdf×d and {bf1
+Y,t, bf1
+S,t} ∈Rdf are
+weight matrix and bias vector of the first layer respectively
+while {Wf2
+Y,t, Wf2
+S,t} ∈Rd×df and {bf2
+Y,t, bf2
+S,t} ∈Rd are
+weight matrix and bias vector of the second layer, respectively.
+The dimension of the first layer’s output is denoted as df, and
+ReLU(x) = max(0, x).
+After the feed forward module, the residual connection and
+batch normalization are also applied and the final output of
+the t-th sparse attention transformer encoder is zn,t+1 =
+Fig. 7.
+The detailed structure of the single query attention module.
+BN(¯zn,t + ˆzn,t). The final output of sparse attention trans-
+former block is zsa
+n
+= zn,T +1, n ∈{0, . . . , Km}, where
+zn,T +1 is the output of the T-th sparse attention transformer
+encoder.
+3) Single Query Attention:
+Here, the high-dimensional
+representation of the received signal and each user’s pilot
+sequence has been obtained via the sparse attention trans-
+former block module and the following single query attention
+module will output more complex and abstract representation
+of the received signal, preparing for further exploring direct
+correlation between the received signal and each user’s pilot
+sequence in the correlation detection module.
+The details of the single query attention module is shown
+in Fig. 7, where the main component is the sparse multi-head
+attention introduced before. The distinction is that only the first
+vector of the output ˜zsa
+0 is useful and other vectors of the output
+are ignored. In other words, only zsa
+0 is considered as a single
+query. Concatenating ˜zsa
+0 and {zsa
+n}Km
+n=1, we can attain the final
+output {zsq
+n }Km
+n=0 ∈Rd. Employing mathematical expressions,
+the {zsq
+n }Km
+n=0 can be obtained as follows:
+{˜zsa
+n}Km
+n=0 = SMA({zsa
+n}Km
+n=0),
+(32)
+zsq
+n =
+(
+˜zsa
+0
+n = 0
+zsa
+n
+n = 1, . . . , Km,
+(33)
+where the SMA function has been introduced before and we
+refrain from further elaboration here.
+4) Correlation Detection: The previous single query atten-
+tion module has already output more complex and abstract
+representation of the received signal, kept the representation
+of each user’s pilot sequence unchanged and concatenated
+them to obtain {zsq
+n }Km
+n=0, which facilitates calculating the
+correlation score between zsq
+0 and each zsq
+n (n = 1, . . . , Km)
+in the correlation detection module. The correlation score an
+between the presentation of the received signal zsq
+0 and the
+presentation of the n-th user’s pilot sequence zsq
+n is
+an = αc softsign
+ zsq
+0
+T Wczsq
+n
+√
+d
+!
+, n = 1, . . . , Km, (34)
+where Wc ∈Rd×d is a learnable parameter and the element
+in the i-th row and j-th column of Wc is the weight assigned
+to the product of the i-th element of zsq
+0 and the j-th element
+of zsq
+n . When training the NN, we aim to obtain a reasonable
+Wc so that the correlation score an accurately reflects the
+activity probability of the n-th user. In addition, softsign(x) =
+x/(1 + |x|) maps the value to the range [−1, 1] and αc
+is a tuning hyperparameter controlling the value within a
+reasonable range. The logit vector of AP m is denoted by
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 9 =====
+18524
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+am = [a1, . . . , aKm], which is the final output of the NN in
+AP m. In fact, the activity probability vector will be obtained
+after the logit vector am is activated by the sigmoid function.
+5) Training Procedure of NN in Each AP: The previous
+content has presented specific components of the NN in each
+AP, and the following will introduce the training procedure.
+During the training procedure, gradients of the NN are calcu-
+lated with a batch of training samples and the Adam optimizer
+is used to update NN parameters based on calculated gradients.
+A learning rate decay strategy is employed, and when the
+specified epoch number is reached, the learning rate will
+be multiplied by a decay factor, aiding in accelerating the
+convergence of training. The output of training procedure is
+optimized NN parameters of all APs {Θ1, . . . , ΘM}, which
+will be transmitted to the CPU. The training procedure of the
+NN in AP m is summarized in Algorithm 2.
+Algorithm 2 Training Procedure of the NN in AP m
+1: Input: number of epochs Ne, batch size Nb, learning rate η,
+decay epoch Nd and decay factor γ
+2: for epoch = 1 : Ne do
+3:
+Generate a batch of Nb training samples
+4:
+Calculate gradients using loss function (6), (7), or (8)
+5:
+Update NN parameters using Adam optimizer with η
+6:
+if epoch = Nd then
+7:
+η ←γη
+8:
+end if
+9: end for
+10: Output: optimized NN parameters Θm
+B. Fusion in CPU Based on Transfer Learning
+Due to the individual bias of each AP caused by different
+channel characteristics, a fusion module is required to integrate
+judgments on the same user from distinct APs to obtain more
+accurate final result. With the existence of fronthaul links
+in cell-free systems, the CPU can receive user activity state
+judgments from each AP so the fusion module is positioned
+in the CPU.
+1) Introduction to Transfer Learning: Transfer learning is a
+machine learning technique that leverages knowledge learned
+from one task to improve the performance on a new task. The
+core idea of transfer learning involves training a model initially
+on a source domain, and subsequently transferring the model
+or its components to a target domain. In addition, parameters
+of the transferred NN processing original task are usually
+frozen and only parameters of newly added components in
+the NN processing new task are fine-tuned, which reduces the
+training burden.
+In our paper, the source domain corresponds to the task
+where each AP trains its NN to detect activity states of users
+under its responsibility, while the target domain corresponds to
+the task where CPU aims to detect activity states of all users.
+Inspired by the transfer learning, each AP sends its trained
+NN parameters to the CPU and the UADFormer is obtained
+by combining the fusion module with transferred NNs of all
+APs. As NNs of all AP have already been trained, there is
+no need to retrain the entire NN in the CPU from scratch
+and we only have to train the fusion module, thereby avoiding
+unnecessary waste of computational resources.
+Fig. 8.
+The detailed structure of the fusion module.
+2) Specific Implementation of Fusion: The detailed struc-
+ture of the fusion module is illustrated in Fig. 8 and each
+component will be introduced below.
+With parameters of trained NNs in APs, we can acquire
+{am}M
+m=1 by inputting training samples into trained NNs of
+APs with frozen parameters. In the user classification mod-
+ule, elements of {am}M
+m=1 will be recombined, and activity
+judgments for the same user will be aggregated, resulting in
+{˜an}β
+n=1 and {¯an}K−β
+n=1 . {˜an}β
+n=1 represents the logit vector
+of users detected by multiple APs where β represents the
+number of such users, and {¯an}K−β
+n=1 denotes the logit value
+of users detected by a single AP.
+After the user classification module, {¯an}K−β
+n=1
+is directly
+fed into the sigmoid module while {˜an}β
+n=1 needs to pass
+through a fully connected layer. For β users detected by
+multiple users, we design an individual fully connected layer
+with non-shared parameters for each user, leading to a total of
+β fully connected layers. The fully connected layer consists
+of a two-layer MLP with a dfc-dimensional hidden layer
+employing ReLU activation function, and outputs a scalar.
+Assuming ˜an is a dn-dimensional vector, the output of the
+n-th fully connected layer is
+˜a′
+n = (wfc
+n)T ReLU
+Wfc
+n˜an + bfc
+n
+
++ bfc
+n,
+(35)
+where Wfc
+n ∈Rdfc×dn, bfc
+n ∈Rdfc, wfc
+n ∈Rdfc, bfc
+n ∈R are
+learnable parameters of the n-th fully connected layer. Since
+the activity probability is between 0 and 1, the sigmoid module
+is used to map the value to the range [0, 1] and sigmoid(x) =
+1/(1+e−x). Feeding {˜a′
+n}β
+n=1 and {¯an}K−β
+n=1 into the sigmoid
+module, we can attain the activity probability vector of all
+users ˆp.
+3) Training Procedure of Fusion in CPU: Before training
+the fusion module in CPU, CPU has received optimized NN
+parameters of all APs {Θ1, . . . , ΘM}. These parameters will
+be set non-trainable when training the fusion module, which
+means that only parameters of the fusion module denoted as
+Θ0 need to be optimized. It is worth noting that in the fusion
+module, only fully connected layers have learnable parameters
+and they do not affect each other, meaning that each fully
+connected layer can be trained independently. In fact, training
+fully connected layers are similar to those in APs introduced
+before, and we will not elaborate further here.
+C. Complexity Analysis
+In practical systems, NNs are pre-trained offline, so when
+analyzing computational complexity, we only consider the
+complexity of online prediction, neglecting the complexity
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 10 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18525
+TABLE I
+COMPUTATIONAL COMPLEXITY OF EACH MODULE
+of offline training. The UADFormer is based on NNs in
+M APs and a CPU, so the overall system complexity is
+determined by these two components. In the DL, floating point
+operations (FLOPs) is usually used to measure the complexity
+of NNs, which is also adopted in this paper. As NNs primarily
+involve matrix multiplication of weight matrices with feature
+representation vectors followed by addition of bias vectors,
+FLOPs refers to the count of multiplication and addition
+operations involving weight matrices.
+The FLOPs for the multiplication of matrix A ∈Rm×n and
+matrix B ∈Rn×p is mnp+m(n−1)p, which consists of mnp
+multiplication operations and m(n −1)p addition operations,
+and the complexity order is O(mnp). The complexity of each
+module is shown in Table I, and total complexity comparison
+between standard transformer and UADFormer is illustrated
+in Table II, where FLOPs of standard transformer block is
+fSTB(m) = T (fMA(m) + fFF(m)) and FLOPs of multi-head
+attention fMA(m) is shown in (36), as shown at the bottom of
+the next page. From these two tables, it can be seen that the
+total complexity order of UADFormer is O(MTHKmd′d) +
+O(MTKmdfd), which is mainly determined by the sparse
+multi-head attention module. Moreover, numerical FLOPs of
+UADFormer decreases by 53% compared with that of standard
+transformer, demonstrating our modification to the standard
+multi-head attention mechanism can effectively reduce the
+computational complexity.
+VI. SIMULATION RESULTS
+A. Simulation Settings
+Here, we consider a uplink cell-free massive MIMO system
+with K = 200 users uniformly distributed in a square area
+of 100m × 100m and M = 20 APs are randomly distributed
+in this area. Similar to [25], the training and testing samples
+are generated as follows. Each element of the pilot matrix S
+is generated obeying i.i.d. CN(0, 1). As in some works about
+cell-free massive MIMO systems such as [12] and [34], the
+large-scale fading coefficient λm,k is generated as follows:
+λm,k = 10
+PLm,k
+10
+· 10
+SHm,k
+10 ,
+(37)
+where 10
+PLm,k
+10
+denotes the path loss and 10
+SHm,k
+10
+represents
+the shadowing effect with SHm,k ∈N(0, 82) (in dB). PLm,k
+(in dB) is given by
+PLm,k =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+−C −35 log10(dm,k),
+if dm,k > d1
+−C −15 log10(d1) −20 log10(dm,k),
+if d0 < dm,k ≤d1
+−C −15 log10(d1) −20 log10(d0),
+if dm,k ≤d0,
+(38)
+where dm,k denotes the distance in meters between AP m
+and the user k, and C is a constant depending on the carrier
+frequency, the user and AP heights. Here, in accordance with
+parameter settings in [35], we set C = 35.7 dB, d0 = 10 m,
+and d1 = 50 m. Each element of small-scale fading vectors
+is also generated obeying i.i.d. CN(0, 1). The transmission
+power of each user is 20 dBm and the background Gaussian
+noise at each AP is −100 dBm. Active users are generated
+by Bernoulli sampling and the received signal of each AP is
+generated according to (2).
+Considering the cost of collecting data in reality, it is nearly
+impossible to generate new training samples at each training
+epoch since this requires a very large amount of data. Thereby,
+as in [29] and [36], we generate, save and repeatedly use
+110000 pieces of samples for NN training and testing. Then,
+we distribute the training data set and test data set by 10:1,
+which resembles that in [29]. Then, all users are assigned to
+different APs for detection using our proposed user grouping
+algorithm, and UADFormer can be trained utilizing BCE,
+WBCE, or ZLPR loss function.
+The hyper-parameters of UADFormer are divided into two
+parts, the NN hyper-parameters in APs and in the CPU.
+Referring to [25], we choose appropriate hyper-parameter
+values. The value of each hyper-parameter of NNs in APs
+is illustrated in Table III, and hyper-parameters of the NN
+in the CPU are generally the same as those of APs except
+the number of training epochs and decay epoch, which are
+15 and 10, respectively. In addition, the hidden size of the
+fusion module is dfc = 256, and the predefined threshold τ is
+usually set as 0.5.
+The direct evaluation metric is the detection error rate (ER).
+Assuming ˆx and x respectively represent the predicted and
+ground truth activity state vector with the length of K, ER is
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 11 =====
+18526
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+TABLE II
+TOTAL COMPLEXITY COMPARISON (K = 200, M = 20, L = 10, N = 16, d = 128, d′ = 32, df = 512, dfc = 256, H = 8, T = 4)
+TABLE III
+HYPER-PARAMETERS OF NNS IN APS
+defined as
+ER = 1 −ˆxT x + (1 −ˆx)T (1 −x)
+K
+.
+(39)
+Considering the imbalance of UAD, as in [25] and [37], the
+probability of missed detection (PM) and the probability of
+false alarm (PF) are also employed to evaluate the UAD
+performance, which are defined as follows:
+PM = xT (1 −ˆx)
+∥x∥0
+,
+PF = (1 −x)T ˆx
+∥1 −x∥0
+,
+(40)
+where 1 is a vector with all elements being 1 and ∥·∥0 denotes
+the 0 norm of vector. In addition, unless otherwise specified,
+in the following simulation, the user activity ratio is pa = 0.1,
+the number of antennas of each AP is set as N = 16, and the
+length of pilot sequences is L = 10.
+B. Performance Evaluation
+Firstly, different evaluation metrics for UADFormer using
+various loss functions versus training epochs during the train-
+ing procedure in APs are illustrated in Fig. 9. From Fig. 9a
+and Fig. 9b, It can be seen that the training loss and testing
+ER generally decrease with an increase of the training epoch
+and at decay epoch Nd = 80, the training loss and testing
+ER decrease rapidly, which indicates the effectiveness of the
+learning rate decay strategy. Moreover, observing these three
+curves in Fig. 9b, the testing ER using ZLPR loss function
+is the lowest among the three, which indicates the benefit of
+ZLPR. The ER employing BCE is lower than that utilizing
+WBCE at the last training epoch, which seems unreasonable
+at first glance. To address this, the PM-PF curves of these
+three loss functions with different predefined thresholds, which
+illustrate the classification balance, are shown in Fig. 9c. The
+intersections of the three curves with the PM = PF line should
+be given special attention, which reflect the accuracy of UAD
+in balancing active and inactive users. In Fig. 9c, PM and
+PF of ZLPR’s intersection are lowest, once again proving its
+superiority. Furthermore, PM and PF of WBCE’s intersection
+are lower than those of BCE’s intersection, which demon-
+strates that UADFormer using WBCE has better classification
+balance.
+Fig. 10 presents the training loss and ER versus epoch
+when training the fusion module in CPU. Since Fig. 9 has
+illustrated advantages of ZLPR, ZLPR is utilized to train the
+fusion module and its training loss and ER are termed as
+TL-Fusion and ER-Fusion, respectively. In addition, unless
+otherwise specified, ZLPR is used as the training loss function
+for the subsequent simulations. To highlight the necessity of
+fusion, ER calculated by taking the average of correlation
+scores provided by multiple APs, termed as ER-AVG, is also
+depicted in Fig. 10 for comparison. It can be seen that the
+training loss and ER generally decrease as the number of
+epochs increases. More importantly, after 8 epochs, ER-Fusion
+is lower than ER-AVG, and at the 15th epoch, ER-Fusion
+decreases by 27% compared with ER-AVG, indicating that
+the fusion module can effectively reduce the ER.
+Next, PM-PF curves of UADFormer and six other schemes
+are shown in Fig. 11. UADFormer is termed as UF and
+standard transformer without sparse attention mechanism is
+termed as ST. The performance of MLP, consisting of 6 hid-
+den layers with batch normalization and ReLU activation,
+is also illustrated in Fig. 11. As for traditional schemes,
+the CS based approach is not adopted since instantaneous
+CSI needs to be estimated, which differs significantly from
+UADFormer. The covariance based method in [19], termed
+as COV, is adpoted as instantaneous CSI is not needed.
+The performance of traditional DL algorithm used to solve
+fMA(m) = H
+
+3(Km + 1)d′(2d −1) + (Km + 1)2(2d′ −1) + d′(Km + 1)(2Km + 1)
+
++ (Km + 1)d(2Hd′ −1).
+(36)
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 12 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18527
+Fig. 9.
+Different evaluation metrics for UADFormer using various loss functions versus training epoch during the training procedure in APs.
+Fig. 10.
+Training loss and error rate versus epoch when training the fusion
+module in the CPU.
+Fig. 11.
+PM-PF performance of different schemes.
+sequential problems such as long short-term memory (LSTM)
+proposed in [38], which is termed as LSTM, is also illustrated
+in Fig. 11. In addition, in order to demonstrate the benefits
+of our proposed UADFormer, we compare the performance
+of low-complexity transformer-based scheme Linformer pro-
+posed in [39] termed as LF, with that of UADFormer in
+Fig. 11. Moreover, the performance of heterogeneous trans-
+former proposed in [25] used in centralized cellular system,
+termed as CC, is depicted in Fig. 11 to show performance
+Fig. 12.
+Training loss and testing loss of standard transformer and UAD-
+Former versus epoch at APs.
+comparison between centralized cellular system and cell-free
+system. It can be seen from Fig. 11 that the intersection point
+of UADFormer and PM = PF line has lowest PM and PF
+among all methods, which indicates the advantages of our
+proposed UADFormer in terms of detection accuracy and
+classification balance. Additionally, the UAD performance of
+heterogeneous transformer in the centralized cellular system
+is close to that of UADFormer in the cell-free system. The
+performance of low-complexity Linformer is lower than that
+of standard transformer because it does not specifically design
+a low-complexity NN structure based on the characteristics of
+the UAD problem like UADFormer. Moreover, the covariance
+based method does not perform as well as UADFormer, and
+the rest two methods, LSTM-based and MLP-based methods,
+has much lower performance than UADFormer since they lack
+the NN structure specifically designed for the UAD problem.
+In general, the simulation results in Fig. 11 highlight the
+benefits of our proposed UADFormer.
+After carefully observing Fig. 11, it is somewhat strange
+that UADFormer performs better than standard transformer
+since standard transformer has more learnable parameters
+and should have higher detection accuracy. Considering only
+100000 pieces of samples are used for training, one possible
+reason is that the overfitting occurs in the training of standard
+transformer. To verify it, we provide the training loss and
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 13 =====
+18528
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+Fig. 13.
+PM-PF performance of two different data generation methods.
+testing loss of standard transformer and UADFormer in
+Fig. 12. From Fig. 12, we can see that there is a gap between
+training loss and testing loss of standard transformer and
+UADFormer, which indicates that overfitting indeed occurs
+during training phase of standard transformer and UADFormer.
+However, the gap of standard transformer is greater than that of
+UADFormer, which means overfitting of standard transformer
+is more severe than that of UADFormer, so the performance
+of UADFormer is better than that of standard transformer in
+Fig. 11.
+As relevant paper [25] generates new data at each training
+epoch, which can effectively avoid overfitting but requires
+collecting a very large amount of data, we test the perfor-
+mance of standard transformer and UADFormer using the data
+generation method in [25]. The results are shown in Fig. 13,
+where the data generation method that we generate, save and
+repeatedly use 100000 pieces of samples for NN training
+is termed as UF-S and ST-S corresponding to UADFormer
+and standard transformer, and the data generation method
+in [25] that we generate a very large amount of data and
+use new data at each training epoch is termed as UF-N and
+ST-N. It can be seen from Fig. 13 that the intersection point
+of standard transformer using the data generation method
+in [25] and PM = PF line has lowest PM and PF among all
+methods, which demonstrates that if there is enough training
+data, standard transformer with more learnable parameters will
+perform better than UADFormer.
+From
+Fig.
+12
+and
+Fig.
+13,
+we
+can
+conclude
+that
+100000 pieces of training samples are not enough for standard
+transformer and UADFormer, resulting the overfitting but due
+to the NN structure designed based on characteristics of the
+UAD problem, UADFormer performs significantly better than
+standard transformer and its detection accuracy is acceptable.
+If a sufficient amount of training data is used, the performance
+of standard transformer will be better. Considering the cost of
+collecting data in reality, our proposed UADFormer is a better
+choice in reality.
+To illustrate low computational complexity of our proposed
+UADFormer intuitively, we compare the computation time for
+solving one UAD problem of all schemes except LSTM and
+MLP because of their very poor performance. Here, only COV
+Fig. 14.
+Computation time of different schemes.
+Fig. 15.
+ER versus transmission power of each user qk.
+is implemented on the 13th Intel(R) Core(TM) i9-13900 CPU
+@ 2.00 GHz while UF, ST, LF and CC are implemented on
+NVIDIA GeForce RTX 4090. The results are shown in Fig. 14
+and it can be seen that the computation time of UADFormer is
+minimal, which indicates that the computational complexity of
+UADFormer is lowest, and the computation time of Linformer
+and standard transformer is close to that of UADFormer. The
+computation time of heterogeneous transformer for solving
+the UAD problem in the centralized cellular system is about
+30 times that of UADFormer for solving the UAD problem in
+the cell-free system since all computing tasks are assigned to
+a single base station for processing in the centralized cellular
+system. The computation time of covariance based scheme is
+about 30000 times of that of UADFormer since it requires
+continuous iteration to obtain the final result.
+Subsequently, the performance of various schemes under
+different parameters of communication systems will be illus-
+trated. In fact, since ER of MLP and LSTM is around 10%,
+which is too high, they will not be utilized in reality. Thereby,
+here, we only focus on other schemes to explore the variation
+of ER with changes in communication system parameters.
+First, we conduct simulation experiments to obtain ER of
+different schemes with different transmission power of each
+user, and results are shown in Fig. 15. From Fig. 15, we can
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 14 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18529
+Fig. 16.
+ER versus length of pilot sequences L.
+Fig. 17.
+ER versus number of antennas of each AP N.
+find that as the transmission power of each user increases,
+ER of all schemes expect MLP will decline. In addition, our
+proposed UADFormer has lowest ER among all schemes used
+in cell-free systems and its performance is close to that of CC
+used in centralized cellular systems. Then, ER versus length
+of pilot sequences is depicted in Fig. 16, where the ER of all
+schemes except MLP declines with the increase of the length
+of pilot sequences. Fig. 17 illustrates ER versus number of
+antennas of each AP, and it can be seen from Fig. 17 that as the
+number of antennas increases, ER of all schemes will decline.
+Consistent with previous simulation results, the performance
+of our proposed UADFormer in Fig. 16 and Fig. 17 is lower
+than that of other schemes used in cell-free systems.
+Considering that spatial correlation among antennas might
+exist, the PM-PF performance of our proposed UADFormer
+with different correlation coefficients is illustrated in Fig. 18,
+where ρ denotes the spatial correlation coefficient and spatially
+uncorrelated fading channel is termed as SUC. As in [40], the
+correlation matrix is modeled by a exponential model with
+different correlation coefficients. From Fig. 18, we can see that
+PM-PF performance declines with the increase of correlation
+coefficient, which demonstrates that stronger spatial correla-
+tion leads to poorer PM-PF performance. However, even when
+ρ = 0.7, which means large spatial correlation, the PM and
+PF are both less than 0.8% when PM = PF. The PM and
+Fig. 18.
+PM-PF performance of our proposed UADFormer with different
+correlation coefficients.
+TABLE IV
+TABLE OF ABLATION STUDY
+PF are completely acceptable when ρ = 0.7, which highlights
+the robustness of our proposed UADFormer under spatially
+correlated fading.
+C. Ablation Study
+To demonstrate effects of our changes on the NN, we con-
+duct the ablation study and results are shown in Table IV.
+From Table IV, we can see that the residual attention score
+can effectively improve the performance of NNs without
+increasing the number of parameters and FLOPs. In addition,
+compared with standard attention mechanism, sparse attention
+mechanism efficiently reduces the number of parameters and
+FLOPs while improving detection accuracy.
+VII. CONCLUSION
+This
+paper
+proposed
+UADFormer,
+which
+was
+a
+transformer-based
+deep
+learning
+method
+to
+solve
+the
+user
+activity
+detection
+problem
+with
+changeable
+pilot
+sequences in the cell-free massive MIMO system. Users were
+assigned to APs for detection employing our proposed user
+grouping algorithm based on large-scale fading coefficients.
+The transformer-based NN was deployed in each access
+point and it output user activity state by exploring the
+correlation between received signals and pilot sequences.
+The fusion NN based on transfer learning was deployed
+in the central processing unit to determine final activity
+states of users detected by multiple access points. Moreover,
+given limited computational and storage resources in access
+points, we utilized sparse attention mechanism to reduce
+complexity and the residual attention score to enhance
+the performance of NNs. Simulation results showed the
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 15 =====
+18530
+IEEE TRANSACTIONS ON WIRELESS COMMUNICATIONS, VOL. 23, NO. 12, DECEMBER 2024
+E{YmYH
+m} = E
+( K
+X
+k=1
+xk
+√qk
+p
+λm,kskhT
+m,k + Wm
+!  K
+X
+k=1
+xk
+√qk
+p
+λm,kh∗
+m,ksH
+k + WH
+m
+!)
+= E
+( K
+X
+k=1
+x2
+kqkλm,kskhT
+m,kh∗
+m,ksH
+k + WmWH
+m
+)
+= N
+K
+X
+k=1
+qkλm,ksksH
+k E{x2
+k} + E
+
+WmWH
+m
+	
+= Npa
+K
+X
+k=1
+qkλm,ksksH
+k + Nσ2
+mIL.
+(41)
+superiority of UADFormer in various evaluation metrics
+compared with other schemes.
+APPENDIX A
+METHOD FOR OBTAINING Ka
+Here, we are committed to estimating the value of activity
+ratio pa, and Ka can be obtained by calculating Ka =
+K · pa. We discover that the activity ratio pa is related to the
+covariance matrix of the received signal. Assuming that the
+probability of each user being active is the same and mutually
+independent, since each element of small-scale fading vectors
+is generated obeying i.i.d. CN(0, 1), the mathematical expec-
+tation of the covariance matrix of received signal at AP m,
+i.e., E{YmY H
+m }, can be expressed by (41), as shown at the
+top of the page.
+By collecting a large amount of received signal data at
+AP m, which is also necessary for training neural networks,
+we can calculate the mean of a large number of samples and
+employ it as an approximation to the mathematical expectation
+E{YmY H
+m }. Given that in (41), all parameters except pa are
+ascertainable, pa can be derived easily. Then, Ka is estimated
+using Ka = K · pa.
+APPENDIX B
+PROOF OF (11)
+To prove the validity of (11), we need to prove that the
+log-sum-exp operator serves as a smooth approximation to the
+maximum operator. The first step is to prove that the log-sum-
+exp operator is smooth, i.e., its continuity and the continuity of
+its derivatives of various orders within its domain of definition.
+Apparently, we have
+1 +
+K
+X
+k=1
+ea(i)
+k
+> 0,
+(42)
+so log
+
+1 +
+K
+P
+k=1
+ea(i)
+k
+
+is continuous. Next, we calculate its
+first partial derivative and we have
+∂log
+
+1 +
+K
+P
+k=1
+ea(i)
+k
+
+∂a(i)
+k
+= ea(i)
+k /
+ 
+1 +
+K
+X
+k=1
+ea(i)
+k
+!
+,
+(43)
+so the first partial derivative is continuous. Through the same
+process, the chain rule can be repeatedly applied to prove
+that any high-order partial derivative is continuous within
+its domain of definition. Thus, here, we have proved that
+the log-sum-exp operator is smooth. Afterwards, we will
+prove from two perspectives that the log-sum-exp operator
+is an approximation to the maximum operator. Here, amax
+is utilized to represent max(0, a(i)
+1 , . . . , a(i)
+K ), i.e., amax =
+max(0, a(i)
+1 , . . . , a(i)
+K ), and we have
+amax = log (eamax) < log
+ 
+e0 +
+K
+X
+k=1
+ea(i)
+k
+!
+.
+(44)
+In addition, we also have
+log
+ 
+e0 +
+K
+X
+k=1
+ea(i)
+k
+!
+≤log ((K + 1) eamax)
+= log (eamax) + log(K + 1) = amax + log(K + 1).
+(45)
+Based on (44) and (45), we have
+amax < log
+ 
+e0 +
+K
+X
+k=1
+ea(i)
+k
+!
+≤amax + log(K + 1),
+(46)
+so we can determine that the log-sum-exp operator is an
+approximation to the maximum operator and their maximum
+difference is no more than log(K + 1). After proving that the
+log-sum-exp operator is smooth and an approximation to the
+maximum operator, the validity of (11) has been proved.
+REFERENCES
+[1] Y. Liu, Y. Deng, M. Elkashlan, A. Nallanathan, and G. K. Karagiannidis,
+“Optimization of grant-free NOMA with multiple configured-grants for
+mURLLC,” IEEE J. Sel. Areas Commun., vol. 40, no. 4, pp. 1222–1236,
+Apr. 2022.
+[2] S. R. Pokhrel, J. Ding, J. Park, O.-S. Park, and J. Choi, “Towards
+enabling critical mMTC: A review of URLLC within mMTC,” IEEE
+Access, vol. 8, pp. 131796–131813, 2020.
+[3] IMT VisionFramework and Overall Objectives of the Future Devel-
+opment of IMT for 2020 and Beyond, document M.2083-0, Int.
+Telecommun. Union, Geneva, Switzerland, Sep. 2015.
+[4] Study on Scenarios and Requirements for Next Generation Access
+Technologies (release 14), document 38.913, 3GPP, Sophia Antipolis,
+France, 2017.
+[5] M. Ke, Z. Gao, Y. Wu, X. Gao, and K.-K. Wong, “Massive access in
+cell-free massive MIMO-based Internet of Things: Cloud computing and
+edge computing paradigms,” IEEE J. Sel. Areas Commun., vol. 39, no. 3,
+pp. 756–772, Mar. 2021.
+[6] X. You, “6G extreme connectivity via exploring spatiotemporal
+exchangeability,” Sci. China Inf. Sci., vol. 66, no. 3, pp. 94–96,
+Mar. 2023.
+[7] M. B. Shahab, R. Abbas, M. Shirvanimoghaddam, and S. J. Johnson,
+“Grant-free non-orthogonal multiple access for IoT: A survey,” IEEE
+Commun. Surveys Tuts., vol. 22, no. 3, pp. 1805–1838, 3rd Quart., 2020.
+[8] K. Senel and E. G. Larsson, “Grant-free massive MTC-enabled massive
+MIMO: A compressive sensing approach,” IEEE Trans. Commun.,
+vol. 66, no. 12, pp. 6164–6175, Dec. 2018.
+[9] W. Kim, Y. Ahn, and B. Shim, “Deep neural network-based active
+user detection for grant-free NOMA systems,” IEEE Trans. Commun.,
+vol. 68, no. 4, pp. 2143–2155, Apr. 2020.
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+===== PAGE 16 =====
+SHENG et al.: UADFormer: A TRANSFORMER-BASED DL METHOD FOR UAD IN CELL-FREE MASSIVE MIMO SYSTEMS
+18531
+[10] L. Liu and W. Yu, “Massive connectivity with massive MIMO—Part I:
+Device activity detection and channel estimation,” IEEE Trans. Signal
+Process., vol. 66, no. 11, pp. 2933–2946, Jun. 2018.
+[11] M. Guo and M. C. Gursoy, “Distributed sparse activity detection in
+cell-free massive MIMO systems,” in Proc. IEEE Global Conf. Signal
+Inf. Process. (GlobalSIP), Nov. 2019, pp. 1–5.
+[12] H. Q. Ngo, A. Ashikhmin, H. Yang, E. G. Larsson, and T. L. Marzetta,
+“Cell-free massive MIMO versus small cells,” IEEE Trans. Wireless
+Commun., vol. 16, no. 3, pp. 1834–1850, Mar. 2017.
+[13] W. Xu, Y. Huang, W. Wang, F. Zhu, and X. Ji, “Toward ubiquitous and
+intelligent 6G networks: From architecture to technology,” Sci. China
+Inf. Sci., vol. 66, no. 3, pp. 5–6, Mar. 2023.
+[14] M. Ke, Z. Gao, Y. Wu, X. Gao, and R. Schober, “Compressive sensing-
+based adaptive active user detection and channel estimation: Massive
+access meets massive MIMO,” IEEE Trans. Signal Process., vol. 68,
+pp. 764–779, 2020.
+[15] Z. Gao et al., “Compressive-sensing-based grant-free massive access for
+6G massive communication,” IEEE Internet Things J., vol. 11, no. 5,
+pp. 7411–7435, Mar. 2024.
+[16] Y. Mei et al., “Compressive sensing-based joint activity and data
+detection for grant-free massive IoT access,” IEEE Trans. Wireless
+Commun., vol. 21, no. 3, pp. 1851–1869, Mar. 2022.
+[17] Y. Li, M. Xia, and Y.-C. Wu, “Activity detection for massive connectivity
+under frequency offsets via first-order algorithms,” IEEE Trans. Wireless
+Commun., vol. 18, no. 3, pp. 1988–2002, Mar. 2019.
+[18] X. Xu, X. Rao, and V. K. N. Lau, “Active user detection and channel
+estimation in uplink CRAN systems,” in Proc. IEEE Int. Conf. Commun.
+(ICC), Jun. 2015, pp. 2727–2732.
+[19] Z. Chen, F. Sohrabi, and W. Yu, “Sparse activity detection in multi-cell
+massive MIMO exploiting channel large-scale fading,” IEEE Trans.
+Signal Process., vol. 69, pp. 3768–3781, 2021.
+[20] D. Jiang and Y. Cui, “ML and MAP device activity detections for
+grant-free massive access in multi-cell networks,” IEEE Trans. Wireless
+Commun., vol. 21, no. 6, pp. 3893–3908, Jun. 2022.
+[21] A.
+Fengler,
+S.
+Haghighatshoar,
+P.
+Jung,
+and
+G.
+Caire,
+“Non-
+Bayesian activity detection, large-scale fading coefficient estimation, and
+unsourced random access with a massive MIMO receiver,” IEEE Trans.
+Inf. Theory, vol. 67, no. 5, pp. 2925–2951, May 2021.
+[22] Z. Chen, F. Sohrabi, Y.-F. Liu, and W. Yu, “Phase transition analysis for
+covariance-based massive random access with massive MIMO,” IEEE
+Trans. Inf. Theory, vol. 68, no. 3, pp. 1696–1715, Mar. 2022.
+[23] D. Guo, L. Tang, X. Zhang, and Y. Liang, “Joint optimization of
+handover control and power allocation based on multi-agent deep
+reinforcement learning,” IEEE Trans. Veh. Technol., vol. 69, no. 11,
+pp. 13124–13138, Nov. 2020.
+[24] Y. Qiang, X. Shao, and X. Chen, “A model-driven deep learning
+algorithm for joint activity detection and channel estimation,” IEEE
+Commun. Lett., vol. 24, no. 11, pp. 2508–2512, Nov. 2020.
+[25] Y. Li, Z. Chen, Y. Wang, C. Yang, B. Ai, and Y.-C. Wu, “Heterogeneous
+transformer: A scale adaptable neural network architecture for device
+activity detection,” IEEE Trans. Wireless Commun., vol. 22, no. 5,
+pp. 3432–3446, May 2023.
+[26] A. Vaswani, “Attention is all you need,” in Proc. 31st Conf. Neural Inf.
+Process. Syst., 2017, pp. 1–11.
+[27] J. Dang, Z. Zhang, L. Wu, B. Zhu, and C. Li, “Joint channel estimation
+and active user detection for cell-free massive access system exploiting
+coarse user location information,” IEEE Internet Things J., early access,
+Dec. 12, 2024, doi: 10.1109/JIOT.2023.3345429.
+[28] J. Li, H. Wang, P. Zhu, D. Wang, and X. You, “Covariance-based activ-
+ity detection with orthogonal pilot sequences for cell-free distributed
+massive MIMO systems,” IEEE Trans. Veh. Technol., vol. 72, no. 1,
+pp. 1307–1312, Jan. 2023.
+[29] L. Diao, H. Wang, J. Li, P. Zhu, D. Wang, and X. You, “A scalable
+deep learning based active user detection approach for SEU-assisted
+cell-free massive MIMO systems,” IEEE Internet Things J., vol. 10,
+no. 22, pp. 19666–19680, Nov. 2023.
+[30] M. Mossberg, E. K. Larsson, and E. Mossberg, “Estimation of
+large-scale fading channels from sample covariances,” in Proc. 45th
+IEEE Conf. Decis. Control, Dec. 2006, pp. 2992–2996.
+[31] J. Su, M. Zhu, A. Murtadha, S. Pan, B. Wen, and Y. Liu, “ZLPR: A novel
+loss for multi-label classification,” 2022, arXiv:2208.02955.
+[32] R. He, A. Ravula, B. Kanagal, and J. Ainslie, “RealFormer: Transformer
+likes residual attention,” 2020, arXiv:2012.11747.
+[33] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for
+image recognition,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit.
+(CVPR), Jun. 2016, pp. 770–778.
+[34] M. Mohammadi, T. T. Vu, H. Q. Ngo, and M. Matthaiou, “Network-
+assisted full-duplex cell-free massive MIMO: Spectral and energy effi-
+ciencies,” IEEE J. Sel. Areas Commun., vol. 41, no. 9, pp. 2833–2851,
+Sep. 2023.
+[35] H. Q. Ngo, L.-N. Tran, T. Q. Duong, M. Matthaiou, and E. G. Larsson,
+“On the total energy efficiency of cell-free massive MIMO,” IEEE Trans.
+Green Commun. Netw., vol. 2, no. 1, pp. 25–39, Mar. 2018.
+[36] H. Jiang, M. Cui, D. W. K. Ng, and L. Dai, “Accurate channel prediction
+based on transformer: Making mobility negligible,” IEEE J. Sel. Areas
+Commun., vol. 40, no. 9, pp. 2717–2732, Sep. 2022.
+[37] Y. Li, Q. Lin, Y.-F. Liu, B. Ai, and Y.-C. Wu, “Asynchronous
+activity detection for cell-free massive MIMO: From centralized to
+distributed algorithms,” IEEE Trans. Wireless Commun., vol. 22, no. 4,
+pp. 2477–2492, Apr. 2023.
+[38] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural
+Comput., vol. 9, no. 8, pp. 1735–1780, 1997.
+[39] S. Wang, B. Z. Li, M. Khabsa, H. Fang, and H. Ma, “Linformer: Self-
+attention with linear complexity,” 2020, arXiv:2006.04768.
+[40] D. Wang, M. Wang, P. Zhu, J. Li, J. Wang, and X. You, “Performance of
+network-assisted full-duplex for cell-free massive MIMO,” IEEE Trans.
+Commun., vol. 68, no. 3, pp. 1464–1478, Mar. 2020.
+Zheng Sheng received the B.S. degree in com-
+munication engineering from Nanjing University
+of Posts and Telecommunications, Nanjing, China,
+in 2020, and the M.Eng. degree in communica-
+tion engineering from Southeast University, Nanjing,
+in 2022, where he is currently pursuing the Ph.D.
+degree in information and communication engi-
+neering. His research interests include full-duplex,
+massive MIMO, URLLC, and machine learning.
+Pengcheng Zhu (Member, IEEE) received the Ph.D.
+degree in communication and information systems
+from Southeast University, Nanjing, China, in 2009.
+He is currently a Professor with the National Mobile
+Communications Research Laboratory, Southeast
+University. His research interests include wireless
+communications and mobile networks, including
+5G/6G mobile communication systems, massive
+MIMO, ultra-reliable and low latency communica-
+tions (URLLC), and mmWave communications.
+Xiaohu You (Fellow, IEEE) received the master’s
+and Ph.D. degrees in electrical engineering from
+Southeast University, Nanjing, China, in 1985 and
+1988, respectively. Since 1990, he has been work-
+ing with National Mobile Communications Research
+Laboratory, Southeast University, where he holds the
+rank of director and professor. His research interests
+include mobile communication systems, signal pro-
+cessing and its applications. He has contributed over
+200 IEEE journal papers and two books in the areas
+of adaptive signal processing, neural networks and
+their applications to communication systems, and made important contribu-
+tions to the development of China’s 3G, 4G, and 5G mobile communications.
+From 1999 to 2002, he was the Principal Expert of the C3G Project,
+responsible for organizing China’s 3G Mobile Communications Research and
+Development Activities. From 2001-2006, he was the Principal Expert of the
+China National 863 Beyond 3G FuTURE Project. Since 2013, he has been the
+Principal Investigator of China National 863 5G Project. Professor You served
+as the general chairs of IEEE WCNC 2013, IEEE VTC 2016 Spring and IEEE
+ICC 2019. Now he is Secretary General of the FuTURE Forum, vice Chair
+of China IMT-2020 Promotion Group, vice Chair of China National Mega
+Project on New Generation Mobile Network. Professor You was the recipient
+of the National 1st Class Invention Prize in 2011, and he was selected as
+IEEE Fellow in same year due to his contributions to development of mobile
+communications in China. He won the Chan Kah Kee Science Award in 2014
+and IET Achievement Medal in 2021. He is a Member of Chinese Academy
+of Sciences.
+Authorized licensed use limited to: Beijing Jiaotong University. Downloaded on May 27,2025 at 08:19:22 UTC from IEEE Xplore.  Restrictions apply. 

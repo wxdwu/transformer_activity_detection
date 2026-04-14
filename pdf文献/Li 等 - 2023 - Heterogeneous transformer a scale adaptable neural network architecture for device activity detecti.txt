@@ -1,0 +1,2100 @@
+
+
+===== PAGE 1 =====
+arXiv:2112.10086v1  [cs.IT]  19 Dec 2021
+1
+Heterogeneous Transformer: A Scale Adaptable
+Neural Network Architecture for Device Activity
+Detection
+Yang Li, Zhilin Chen, Yunqi Wang, Chenyang Yang, and Yik-Chung Wu
+Abstract—To support the modern machine-type communica-
+tions, a crucial task during the random access phase is device
+activity detection, which is to detect the active devices from a
+large number of potential devices based on the received signal
+at the access point. By utilizing the statistical properties of the
+channel, state-of-the-art covariance based methods have been
+demonstrated to achieve better activity detection performance
+than compressed sensing based methods. However, covariance
+based methods require to solve a high dimensional nonconvex
+optimization problem by updating the estimate of the activity
+status of each device sequentially. Since the number of up-
+dates is proportional to the device number, the computational
+complexity and delay make the iterative updates difﬁcult for
+real-time implementation especially when the device number
+scales up. Inspired by the success of deep learning for real-
+time inference, this paper proposes a learning based method
+with a customized heterogeneous transformer architecture for
+device activity detection. By adopting an attention mechanism
+in the architecture design, the proposed method is able to
+extract the relevance between device pilots and received signal,
+is permutation equivariant with respect to devices, and is scale
+adaptable to different numbers of devices. Simulation results
+demonstrate that the proposed method achieves better activity
+detection performance with much shorter computation time than
+state-of-the-art covariance approach, and generalizes well to
+different numbers of devices, BS-antennas, and different signal-
+to-noise ratios.
+Index Terms—Activity detection, attention mechanism, deep
+learning, Internet-of-Things (IoT), machine-type communications
+(MTC).
+I. INTRODUCTION
+To meet the dramatically increasing demand for wireless
+connectivity of Internet-of-Things (IoT), machine-type com-
+munications (MTC) have been recognized as a new paradigm
+in the ﬁfth-generation and beyond wireless systems. Different
+from the traditional human-to-human communications, MTC
+scenarios commonly involve a large number of IoT devices
+connecting to the network, but only a small portion of the
+devices are active at any given time due to the sporadic
+trafﬁcs [1]–[3]. In activity detection, each device is assigned
+Y. Li is with Shenzhen Research Institute of Big Data, Shenzhen, 518172,
+China (e-mail: liyang@sribd.cn).
+Z. Chen is with The Edward S. Rogers Sr. Department of Electrical and
+Computer Engineering, University of Toronto, Toronto, ON M5S 3G4, Canada
+(e-mail: zchen@comm.utoronto.ca).
+Y. Wang and Y.-C. Wu are with the Department of Electrical and Elec-
+tronic Engineering, The University of Hong Kong, Hong Kong (e-mail:
+{yunqi9@connect, ycwu@eee}.hku.hk).
+C. Yang is with the School of Electronics and Information Engineering,
+Beihang University, Beijing, 100191, China (e-mail: cyyang@buaa.edu.cn).
+a unique pilot sequence and the base station (BS) detects
+which pilot sequences are received in the random access
+phase [4], [5]. However, the pilot sequences for device activity
+detection have to be nonorthogonal, due to the large number
+of devices but limited coherence time. The nonorthogonality
+of the pilot sequences inevitably induces interference among
+different devices, and hence complicates the task of device
+activity detection in MTC.
+To tackle the problem of device activity detection with
+nonorthogonal pilot sequences, two major approaches have
+been proposed in the literature. The ﬁrst approach identiﬁes
+the active devices through joint device activity detection and
+channel estimation using compressed sensing based methods
+[6]–[18]. Speciﬁcally, [6], [7] proposed approximate message
+passing (AMP) based algorithms to jointly recover the device
+activity and the instantaneous channel state information. Fur-
+thermore, AMP was extended to include data detection [8], [9]
+and to multi-cell systems [10]–[12], respectively. In addition
+to AMP, other compressed sensing based methods, such as
+Bayesian sparse recovery [13], [14] and regularization based
+sparse optimization [15]–[18] have also been investigated for
+joint device activity detection and channel estimation.
+Different from the compressed sensing based methods,
+the second approach utilizes the statistical properties of the
+channel without the need of estimating the instantaneous
+channel state information. This approach is referred to as the
+covariance based methods, since they are based on the sample
+covariance matrix of the received signal [19]–[23]. The co-
+variance based methods have recently drawn a lot of attention
+due to the superiority of activity detection performance. In
+particular, the analytical results in [24], [25] show that the
+required pilot sequence length of the covariance based methods
+for reliable activity detection is much shorter than that of the
+compressed sensing based methods.
+While the covariance based methods outperform the com-
+pressed sensing based methods due to the advantage of uti-
+lizing the statistical properties of the channel, the covariance
+approach requires to solve a high dimensional nonconvex
+optimization problem [19]–[23], where the estimate of the
+activity status of each device is updated sequentially using
+the coordinate descent method. The sequential nature of the
+coordinate descent method implies that the number of updates
+is proportional to the total number of devices. Consequently,
+the resulting computational complexity and delay make it
+unsuitable for real-time implementation, especially when the
+device number is very large.
+
+
+===== PAGE 2 =====
+2
+Recently, deep learning has been exploited to avoid the high
+computational cost caused by iterative algorithms [26]–[29].
+Instead of solving each optimization problem case-by-case,
+deep learning utilizes neural networks to represent a mapping
+function from many problem instances to the corresponding
+solutions based on a large number of training samples. Once
+the mapping function is obtained, the neural network can
+infer the solution of any new problem in a real-time manner.
+Moreover, thanks to the universal approximation property of
+neural networks [30], deep learning also has the opportunity
+to learn a better solution than the conventional model-based
+methods for complex problems [31]–[34].
+The potentials of deep learning in computational efﬁciency
+and solution quality motivate us to study a learning based
+method for tackling the high dimensional nonconvex problem
+in device activity detection. For this purpose, we interpret
+the activity detection as a classiﬁcation problem and design
+a customized neural network architecture for representing the
+mapping function from the received signal and device pilots
+to the corresponding activity status. While generic multi-
+layer perceptrons (MLPs) have been widely used for function
+representations, they are not tailored to the activity detection
+problem due to the lack of some key properties. In particular,
+• To detect the device activities, the BS should perceive which
+device pilots are received from the received signal. There-
+fore, it is beneﬁcial to incorporate a computation mechanism
+into the neural network for evaluating the relevance between
+the received signal and device pilots. However, generic
+MLPs do not generate such an attribute.
+• The device activity detection has an inherent permutation
+equivariance property with respect to devices. To be speciﬁc,
+if the indices of any two devices are exchanged, the neural
+network should output a corresponding permutation. Incor-
+porating permutation equivariance into the neural network
+architecture can reduce the parameter space and also avoid
+a large number of unnecessary permuted training samples
+[28], [29], [31]. Unfortunately, the architecture of generic
+MLPs cannot guarantee the permutation equivariance prop-
+erty.
+• As the device number scales up, it is highly expected that the
+neural network is generalizable to larger numbers of devices
+than the setting in the training procedure. Nevertheless,
+generic MLPs are designed for a pre-deﬁned problem size
+with ﬁxed input and output dimensions, and thus the well-
+trained MLPs are no longer applicable to a different number
+of devices. Recent works have applied deep learning for
+joint activity detection and pilot design [35] and for joint
+activity detection and channel estimation [36], respectively.
+However, using the neural networks of [35], [36], the device
+pilots can only be either optimized for a pre-deﬁned device
+number [35] or ﬁxed as a given matrix [36], and thus the
+well-trained neural networks can neither generalize to a
+different device number nor to a different set of device
+pilots.
+To incorporate the properties mentioned above into the neu-
+ral network, this paper proposes a heterogeneous transformer
+architecture, which is inspired by the recent successes of the
+transformer model in natural language processing (NLP) [37].
+In particular, transformer is built on an attention mechanism,
+which can extract the relevance among different words within
+a sentence. Based on the relevance extraction, transformer can
+decide which parts of the source sentence to pay attention to.
+We observe that the relevance extraction is appealing to the
+activity detection problem, since the BS should perceive which
+device pilots contribute to the received signal by evaluating the
+relevance between the received signal and device pilots.
+Yet different from the NLP tasks where different words
+belong to the same class of features, the received signal and
+device pilots in the activity detection problem have different
+physical meanings, and hence should be processed differently.
+This observation motivates us to design a heterogeneous
+transformer architecture. Speciﬁcally, instead of using a single
+set of parameters to process all the inputs as in the standard
+transformer, we use two different sets of parameters, one to
+process the representations corresponding to the device pilots,
+and the other set for the received signal.
+The overall deep neural network consists of an initial em-
+bedding layer, multiple heterogeneous transformer encoding
+layers, and a decoding layer. The initial embedding layer
+takes the received signal and device pilots as the inputs
+and produces the initial embeddings. The initial embeddings
+are further processed through the encoding layers, where the
+heterogeneous attention mechanism is applied to extract the
+relevance among the received signal and device pilots. Finally,
+the decoding layer decides the activity status of each device
+based on the extracted relevance.
+The main contributions of this work are summarized as
+follows.
+1) We provide a novel perspective on how device activity
+detection can be formulated as a classiﬁcation problem with
+the received signal and device pilots as inputs. By con-
+structing a training data set of received signals and devices
+pilots with ground-truth labels, we propose a deep learning
+approach to mimic the optimal mapping function from the
+received signal and device pilots to device activities, which
+can potentially achieve better detection performance than
+state-of-the-art covariance approach. Moreover, instead of
+iteratively solving an optimization problem case-by-case,
+the proposed learning based method can infer the solution
+of any new problem in a real-time manner due to the
+computationally cheap inference.
+2) We further propose a customized heterogeneous trans-
+former architecture based on the attention mechanism,
+which learns the device activities from the relevance be-
+tween the received signal and device pilots. Moreover, by
+sharing the parameters for producing the representations of
+different device pilots, the proposed heterogeneous trans-
+former is permutation equivariant with respect to devices,
+and the dimensions of parameters that require to be op-
+timized during the training procedure are independent of
+the number of devices. This scale adaptability makes the
+proposed architecture generalizable to different numbers of
+devices.
+3) Simulation results show that the proposed learning based
+method using heterogeneous transformer achieves better
+
+
+===== PAGE 3 =====
+3
+activity detection performance with much shorter compu-
+tation time than state-of-the-art covariance approach. The
+proposed method also generalizes well to different numbers
+of devices, BS-antennas, and different signal-to-noise ratios
+(SNRs).
+The remainder of this paper is organized as follows. System
+model and existing approaches are introduced in Section II. A
+novel deep learning perspective on device activity detection is
+proposed in Section III. A heterogeneous transformer architec-
+ture is designed in Section IV. Simulation results are provided
+in Section V. Finally, Section VI concludes the paper.
+Throughout this paper, scalars, vectors, and matrices are de-
+noted by lower-case letters, lower-case bold letters, and upper-
+case bold letters, respectively. The real and complex domains
+are denoted by R and C, respectively. We denote the transpose,
+conjugate transpose, inverse, real part, and imaginary part of a
+vector/matrix by (·)T , (·)H, (·)−1, ℜ(·), and ℑ(·), respectively.
+The N ×N identity matrix and the length-N all-one vector are
+denoted as IN and 1N, respectively. The trace, determinant,
+and the column vectorization of a matrix are represented as
+Tr(·), | · |, and vec(·), respectively. The notation ⊙denotes
+the element-wise product, I(·) denotes the indicator function,
+ReLu(·) denotes the function max(·, 0), and CN (·, ·) denotes
+the complex Gaussian distribution.
+II. SYSTEM MODEL AND EXISTING APPROACHES
+A. System Model
+Consider an uplink multiple-input multiple-output (MIMO)
+system with one M-antenna BS and N single-antenna IoT
+devices. We adopt a block-fading channel model, where the
+channel from each device to the BS remains unchanged within
+each coherence block. Let √gnhn denote the channel from
+the n-th device to the BS, where √gn and hn ∈CM are the
+large-scale and small-scale Rayleigh fading components, re-
+spectively. Due to the sporadic trafﬁcs of MTC, only K ≪N
+devices are active in each coherence block. If the n-th device
+is active, we denote the activity status as an = 1 (otherwise,
+an = 0).
+To detect the activities of the IoT devices at the BS, we
+assign each device a unique pilot sequence sn ∈CLp, where
+Lp is the length of the pilot sequence. Device n transmits
+the pilot sequence sn with transmit power pn if it is active.
+Assuming that the transmission from different devices are
+synchronous, we can model the received signal at the BS as
+Y =
+N
+X
+n=1
+sn
+√pngnanhT
+n + W = SG
+1
+2 AH + W,
+(1)
+where
+S
+≜
+[s1, . . . , sN]
+∈
+CLp×N,
+G
+≜
+diag {p1g1, . . . , pNgN},
+A
+≜
+diag {a1, . . . , aN},
+H ≜
+[h1, . . . , hN]T
+∈
+CN×M, and W
+∈
+CLp×M is
+the Gaussian noise at the BS.
+This paper aims to detect the activity status {an}N
+n=1 based
+on the received signal Y at the BS. Since the IoT devices are
+stationary in many practical deployment scenarios, the large-
+scale fading components can be obtained in advance and hence
+assumed to be known [21]–[23]. In order to reduce the channel
+gain variations among different devices, the transmit power
+of each device can be controlled based on the large-scale
+channel gain [8]. This is especially beneﬁcial to the devices
+with relatively weak channel gains.
+B. Existing Approaches
+Existing approaches for device activity detection can be
+roughly divided into two categories: compressed sensing based
+methods and covariance based methods.
+1) Compressed Sensing Based Methods: Due to the sporadic
+trafﬁcs of MTC, the activity status and the instantaneous
+small-scale fading channels can be jointly estimated by solv-
+ing a compressed sensing problem. Speciﬁcally, by denoting
+B ≜SG
+1
+2 ∈CLp×N and X ≜AH ∈CN×M, according
+to (1), the activity status can be obtained by recovering the
+row-sparse matrix X from Y = BX + W. However, since
+a large amount of instantaneous channel state information
+requires to be estimated simultaneously, the activity detection
+performance of compressed sensing based methods cannot
+compete with that of covariance based methods.
+2) Covariance Based Methods: When the BS is equipped
+with multiple antennas, by utilizing the statistical properties
+of the channel, covariance based methods can estimate the
+activity status without estimating the instantaneous chan-
+nels. Speciﬁcally, the covariance approach treats the small-
+scale fading channel matrix H and the noise matrix W
+as complex Gaussian random variables. Each column of H
+and W are assumed to follow independent and identically
+distributed (i.i.d.) CN(0, IN) and CN(0, σ2ILp), where σ2
+is the noise variance. Let ym denote the m-th column of
+the received signal Y, which follows i.i.d. CN (0, Σ) with
+Σ = E
+
+ymyH
+m
+
+= SGASH + σ2ILp. Consequently, the
+activity status {an}N
+n=1 can be detected by maximizing the
+likelihood function [21]–[23]
+p(Y; {an}N
+n=1)
+=
+M
+Y
+m=1
+p(ym; {an}N
+n=1)
+=
+1
+|πΣ|M exp
+−Tr
+Σ−1YYH
+,(2)
+which is equivalent to the following combinatorial optimiza-
+tion problem
+min
+{an}N
+n=1
+log |Σ| + 1
+M Tr
+Σ−1YYH
+,
+(3a)
+s.t.
+an ∈{0, 1} ,
+∀n = 1, . . . , N.
+(3b)
+The covariance approach ﬁrst relaxes the binary constraint (3b)
+as an ∈[0, 1], and then applies the coordinate descent method
+that iteratively updates each an for solving the relaxed prob-
+lem. However, since the coordinate descent method requires
+to update each an sequentially, the total iteration number
+is proportional to the number of devices N, which induces
+tremendous computational complexity and delay, especially
+when the device number is massive. Moreover, due to the non-
+convexity of the cost function (3a), the covariance approach
+can only obtain a stationary point of the relaxed problem.
+Different from the conventional optimization based algo-
+rithms which involve a lot of iterations, deep learning based
+
+
+===== PAGE 4 =====
+4
+methods can provide a real-time solution by computationally
+cheap operations [26]–[29]. In the following two sections,
+we propose a deep learning based method for device activity
+detection. The proposed method consists of interpreting device
+activity detection as a classiﬁcation problem (Section III), and
+a customized neural network architecture (Section IV).
+III. A NOVEL DEEP LEARNING PERSPECTIVE
+A. Device Activity Detection as Classiﬁcation Problem
+In this paper, we strive to learn the the activity status
+{an}N
+n=1 without estimating the instantaneous channel H.
+However, instead of learning to optimize the problem (3)
+whose optimal solution is difﬁcult to obtain, we learn the
+activity status {an}N
+n=1 directly from the ground-truth training
+labels based on the received signal model (1). We can see
+from (1) that the received signal Y is actually a weighted
+sum of the active device pilots SG
+1
+2 A = BA. To ﬁnd out
+which columns of B contribute to Y, we need to build a
+computation mechanism to evaluate the relevance between Y
+and B. Moreover, since each an ∈{0, 1} is a discrete variable,
+we can view the activity detection as a classiﬁcation problem,
+i.e., classifying each an as 0 or 1 based on Y and B.
+Speciﬁcally, we construct a training data set D for super-
+vised learning, where the i-th training sample is composed of
+
+Y(i), B(i),
+n
+˜a(i)
+n
+oN
+n=1
+
+, and ˜a(i)
+n is the ground-truth label of
+the n-th device’s activity status. The received signal Y(i) is
+constructed by substituting a given pair of
+
+B(i),
+n
+˜a(i)
+n
+oN
+n=1
+
+into (1), where B(i) is determined by a set of pilot sequences,
+large-scale fading gains, and transmit powers,
+n
+˜a(i)
+n
+oN
+n=1
+can be generated from Bernoulli distribution, and the small-
+scale fading channel H and the noise W are sampled from
+complex Gaussian distributions. Although H and W are used
+to construct the received signal in the training samples, they
+themselves are not explicitly included in the training samples,
+since {an}N
+n=1 should be detected based on Y and B without
+knowing H and W.
+Using the training data set D, we learn a classiﬁer to infer
+the active probability of each device Pn from Y and B. Let
+f : CLp×M × CLp×N →[0, 1]N denote the mapping function
+from (Y, B) to p ≜[P1, . . . , PN]T . We strive to optimize the
+mapping function f (·, ·) such that the difference between the
+output of the mapping function
+n
+P (i)
+n
+oN
+n=1 and the ground-
+truth label
+n
+˜a(i)
+n
+oN
+n=1 is as close as possible. For this purpose,
+we adopt cross entropy [38] for measuring the discrepancy
+between
+n
+P (i)
+n
+oN
+n=1 and
+n
+˜a(i)
+n
+oN
+n=1, and learn the classiﬁer
+by minimizing the following cross entropy based loss function:
+min
+f(·,·)
+|D|
+X
+i=1
+ 
+2
+N
+N
+X
+n=1
+ 
+N −K
+N
+˜a(i)
+n log P (i)
+n
++K
+N (1 −˜a(i)
+n ) log
+
+1 −P (i)
+n
+ !!
+.
+(4)
+Notice that when the number of active devices is equal to
+that of inactive devices, i.e., K = N −K, the loss function
+(4) will reduce to the standard binary cross-entropy loss [38],
+which is widely used for balanced classiﬁcation in machine
+learning. However, due to the sporadic trafﬁcs of MTC, the
+number of active devices is commonly much less than that
+of inactive devices, i..e., K ≪N −K, and thus the standard
+binary cross-entropy loss will induce overﬁtting to the inactive
+class. In order to avoid overﬁtting, we put a much larger
+weight (N −K) /N on the loss corresponding to the sporadic
+active devices while setting a smaller weight K/N on the loss
+corresponding to the more common inactive devices in (4).
+B. Parametrization by Neural Network
+To solve problem (4), we train a neural network (the detailed
+architecture is given in Section IV) for parameterizing the
+mapping function f (·, ·). During the training procedure, the
+neural network learns to adjust its parameters for minimizing
+the loss function (4), so that the neural network can mimic
+the optimal mapping function from the received signal Y
+and the scaled pilot matrix B to the active probability p.
+In particular, the neural network parameters can be updated
+via gradient based methods, e.g., the Adam algorithm [39],
+where the gradients can be automatically computed in any
+deep learning framework, e.g., Pytorch [40]. After training,
+by inputting any Y and B into the neural network, we
+can compute the corresponding output p via computationally
+cheap feed-forward operations. Once p is obtained, we can
+use Bernoulli sampling to obtain the activity status of each
+device. Alternatively, we can adopt a threshold ξ to determine
+the activity status as an = I(Pn > ξ).
+Notice that the training data set is constructed based on
+the received signal model (1), where the ground-truth labels
+of the device activities are given. This allows the neural
+network to mimic the optimal mapping function f (·, ·) directly
+from the ground-truth labels [35], [36]. Therefore, there is
+an opportunity to achieve better detection performance than
+state-of-the-art covariance based methods that only obtain a
+stationary point of the relaxed problems [21]–[23]. Moreover,
+after the training procedure, the neural networks can infer the
+solution of any new problem in a real-time manner due to the
+computationally cheap inference.
+C. Limitations of Generic MLPs
+The remaining task is the neural network architecture de-
+sign for representing the mapping function f (·, ·). Although
+generic MLPs have been widely used for function represen-
+tations, they are not tailored to the activity detection problem
+mainly due to three reasons. First, the active probability of
+each device Pn should be learned based on the the relevance
+between the received signal Y and the scaled pilot matrix B.
+However, generic MLPs simply concatenate Y and B as a
+single input, and hence it is difﬁcult to extract the relevance
+between Y and B. Second, when any two columns of B
+are exchanged and Y is unchanged, f (·, ·) should output a
+corresponding permutation of the original p. Nevertheless,
+generic MLPs cannot guarantee the permutation equivariance
+
+
+===== PAGE 5 =====
+5
+for the activity detection problem. Last but not the least, as
+the number of devices scales up, it is highly expected that the
+neural network is scale adaptable and generalizable to larger
+numbers of devices than the setting in the training procedure.
+Unfortunately, as the input and output dimensions of generic
+MLPs are ﬁxed, they are designed for a pre-deﬁned problem
+size. Once the number of devices N has changed, the well-
+trained MLPs are no longer applicable.
+IV. PROPOSED HETEROGENEOUS TRANSFORMER FOR
+REPRESENTING f (·, ·)
+In this section, we propose a customized neural network
+architecture for representing the mapping function f (·, ·).
+Instead of directly applying generic MLPs, we strive to
+incorporate properties of the activity detection problem into
+the neural network architecture. In particular, the proposed
+architecture is capable of extracting the relevance between the
+inputs Y and B, is permutation equivariant with respect to
+devices, and is scale adaptable to different numbers of devices.
+Before presenting the proposed architecture, we ﬁrst brieﬂy
+review the basic idea of the transformer model.
+A. Transformer Model
+Transformer was originally designed for NLP tasks such as
+machine translation. It adopts an encoder-decoder architecture.
+The encoder converts the input into a hidden representation
+by a sequence of encoding layers, while the decoder produces
+the output from the hidden representation by a sequence of
+decoding layers. Both the encoder and decoder of transformer
+are built on the attention mechanism [37], which extracts the
+relevance among different input components. In the context of
+NLP, the attention mechanism allows the transformer model
+to learn from the relevance among different words within a
+sentence. Since both the encoder and decoder have a similar
+structure, we only review the architecture of the encoder as
+follows.
+The transformer encoder consists of several sequential en-
+coding layers, where each encoding layer extracts the rel-
+evance among the input components. The generated output
+of each encoding layer is then passed to the next encoding
+layer as the input. Speciﬁcally, each encoding layer mainly
+consists of two blocks: a multi-head attention (MHA) block
+that extracts the relevance among different input components,
+and a component-wise feed-forward (FF) block for additional
+processing. Each block further adopts a skip-connection [41],
+which adds an identity mapping to bypass the gradient ex-
+ploding or vanishing problem for ease of optimization, and a
+normalization step [42], which re-scales the hidden represen-
+tations to deal with the internal covariate shift in collective
+optimization of multiple correlated features.
+For better understanding, the l-th encoding layer is illus-
+trated in Fig. 1, where the inputs
+n
+x[l−1]
+n
+oN
+n=1 are passed to the
+MHA block and the component-wise FF block successively.
+The most important module in Fig. 1 is the MHA block,
+which evaluates the relevance of every pair of components
+in
+n
+x[l−1]
+n
+oN
+n=1 by scoring how well they match in multiple
+Fig. 1. The l-th encoding layer of the transformer model.
+attention spaces. By combining all the matching results from
+different attention spaces, each layer output is able to capture
+the relevance among the input components. In the context of
+NLP, this relevance information reﬂects the importance of each
+source word and intuitively decides which parts of the source
+sentence to pay attention to.
+B. Architecture of Proposed Heterogeneous Transformer
+The relevance extraction of transformer is appealing for
+representing the mapping function f (·, ·), as the device ac-
+tivity should be detected based on the relevance between the
+received signal Y and the scaled pilot matrix B. However,
+different from the NLP tasks where different words belong to
+the same class of features, the inputs Y and B in the activity
+detection problem have different physical meanings, and hence
+should be processed differently. This observation motivates
+us to design a heterogeneous transformer architecture for
+representing f (·, ·).
+In particular, the proposed heterogenous transformer is com-
+posed of an initial embedding layer, L encoding layers, and a
+decoding layer, where we use the same set of parameters to
+process the representations corresponding to the device pilots,
+while we process the representation corresponding to the
+received signal using another set of parameters. The speciﬁc
+architectures of different layers are presented as follows. For
+ease of presentation, the scaled pilot matrix is expanded as
+B = [b1, . . . , bN], with the column bn corresponding to the
+n-th device.
+1) Initial Embedding Layer
+The initial embedding layer represents the N device pilots
+{bn}N
+n=1 and the received signal Y as the input features and
+then transforms them into an initial representation for the
+subsequent encoding layers. The input features are expressed
+in real-vector forms by separating the real and imaginary parts.
+Speciﬁcally, the input features corresponding to {bn}N
+n=1 are
+given by
+xin
+n =
+h
+ℜ{bn}T , ℑ{bn}T iT
+∈R2Lp,
+∀n = 1, . . . , N. (5)
+On the other hand, to make the proposed neural network
+architecture scale adaptable to the number of antennas M, we
+represent the input features corresponding to Y by vectorizing
+the sample covariance matrix C ≜YYH/M:
+xin
+N+1 =
+h
+ℜ{vec (C)}T , ℑ{vec (C)}T iT
+∈R2L2
+p ,
+(6)
+
+
+===== PAGE 6 =====
+6
+whose dimension is independent of M. In section V, simula-
+tion results will be provided to demonstrate the generalizability
+with respect to different numbers of antennas M.
+Given the input features
+
+xin
+n
+	N+1
+n=1 , the initial embedding
+layer applies linear projections to produce the initial embed-
+dings. Let d denote the dimension of the initial embeddings.
+The linear projections are given by
+x[0]
+n =
+(
+Win
+Bxin
+n + bin
+B,
+∀n = 1, . . . , N,
+Win
+Yxin
+N+1 + bin
+Y,
+n = N + 1,
+(7)
+where Win
+B ∈Rd×2Lp and bin
+B ∈Rd are the parameters for
+projecting the input features
+
+xin
+n
+	N
+n=1, while Win
+Y ∈Rd×2L2
+p
+and bin
+Y ∈Rd are the parameters for projecting the input
+feature xin
+N+1. In (7), the same set of parameters
+
+Win
+B, bin
+B
+	
+is
+shared among all devices’ pilots, so that the initial embedding
+layer is scale adaptable to the number of devices in the actual
+deployment. Furthermore, the input feature corresponding to
+the received signal is processed heterogeneously by another
+set of parameters
+
+Win
+Y, bin
+Y
+	
+. The obtained initial embeddings
+n
+x[0]
+n
+oN+1
+n=1 from (7) are subsequently passed to L encoding
+layers as follows.
+2) Encoding Layers
+In each encoding layer l ∈{1, . . ., L}, we adopt the general
+transformer encoding layer structure in Fig. 1. However, the
+architectures of MHA, FF, and normalization blocks in this
+work are different from that of the standard transformer, where
+all the inputs in a particular layer are processed using the
+same set of parameters. In contrast, since the device pilots
+and the received signal have different physical meanings, we
+use one set of parameters to process the inputs
+n
+x[l−1]
+n
+oN
+n=1
+(corresponding to the device pilots), and we process x[l−1]
+N+1
+(corresponding to the received signal) heterogeneously using
+another set of parameters.
+Speciﬁcally, the computation in the l-th encoding layer is
+described by (8) and (9), where MHAl
+B and MHAl
+Y denote the
+MHA computations, FFl
+B and FFl
+Y denote the component-wise
+FF computations, BNl
+B and BNl
+Y represent the batch normal-
+ization (BN) steps [43], and the plus signs represent the skip-
+connections. The superscript l indicates that different layers
+do not share parameters, while the superscripts B and Y mean
+that the representations corresponding to the device pilots
+and the received signal are computed heterogeneously. In (8),
+x[l−1]
+n
+and x[l−1]
+N+1 are put outside of the set
+n
+x[l−1]
+j
+oN
+j=1,j̸=n,
+which implies that each x[l−1]
+j
+is processed in the same way,
+while x[l−1]
+n
+and x[l−1]
+N+1 are processed in a different way
+from
+n
+x[l−1]
+j
+oN
+j=1,j̸=n. Next, we explain the computations
+of MHAB, MHAY, FFB, FFY, BNB, and BNY in detail. For
+notational simplicity, we omit the superscript with respect to
+l in the following descriptions.
+a) MHA Computations: First, we present the MHA com-
+putations in (8), where we use T attention heads to extract
+the relevance among the input components (see Fig. 2(a)).
+To describe each attention head, we deﬁne six sets of pa-
+rameters Wq
+B,t ∈Rd′×d, Wq
+Y,t ∈Rd′×d, Wk
+B,t ∈Rd′×d,
+Wk
+Y,t ∈Rd′×d, Wv
+B,t ∈Rd′×d, and Wv
+Y,t ∈Rd′×d, where d′
+is the dimension of each attention space and t ∈{1, . . . , T }.
+For the t-th attention head, it computes a query qn,t, a key
+kn,t, and a value vn,t for each xn (see Fig. 2(b)):
+qn,t
+=
+(
+Wq
+B,txn,
+∀n = 1, . . . , N,
+Wq
+Y,txN+1,
+n = N + 1,
+(10)
+kn,t
+=
+(
+Wk
+B,txn,
+∀n = 1, . . . , N,
+Wk
+Y,txN+1,
+n = N + 1,
+(11)
+vn,t
+=
+(
+Wv
+B,txn,
+∀n = 1, . . . , N,
+Wv
+Y,txN+1,
+n = N + 1,
+(12)
+where
+the
+heterogeneity is
+reﬂected
+in
+using
+parame-
+ters
+n
+Wq
+B,t, Wk
+B,t, Wv
+B,t
+oT
+t=1
+to
+project
+{xn}N
+n=1
+(cor-
+responding to
+the device pilots) and using
+parameters
+n
+Wq
+Y,t, Wk
+Y,t, Wv
+Y,t
+oT
+t=1 to project xN+1 (corresponding to
+the received signal) to different attention spaces. Then, each
+attention head computes an attention compatibility αnjt for
+evaluating how much xn is related to xj:
+αn,j,t = qT
+n,tkj,t
+√
+d′
+,
+∀n = 1, . . . , N + 1,
+∀j = 1, . . . , N + 1,
+∀t = 1, . . . , T,
+(13)
+and the corresponding attention weight is computed by nor-
+malizing αn,j,t in [0, 1]:
+βn,j,t =
+eαn,j,t
+PN+1
+j′=1 eαn,j′,t ,
+∀n = 1, . . . , N + 1,
+∀j = 1, . . . , N + 1,
+∀t = 1, . . . , T.
+(14)
+With the attention weight βn,j,t scoring the relevance between
+xn and xj, the attention value of xn at the t-th attention head
+is computed as a weighted sum1:
+x′
+n,t =
+N+1
+X
+j=1
+βn,j,tvj,t,
+∀n = 1, . . . , N + 1.
+(15)
+Finally, by combining the attention values from T
+at-
+tention heads with parameters
+n
+Wo
+B,t ∈Rd×d′oT
+t=1
+and
+n
+Wo
+Y,t ∈Rd×d′oT
+t=1,
+
+x′
+n,t
+	N+1
+n=1 are projected back to d-
+dimensional vectors and we obtain the MHA computation
+results (see Fig. 2(a)):
+MHAB
+
+xn, {xj}N
+j=1,j̸=n , xN+1
+
+=
+T
+X
+t=1
+Wo
+B,tx′
+n,t,
+∀n = 1, . . . , N, (16)
+MHAY
+
+xN+1, {xj}N
+j=1
+
+=
+T
+X
+t=1
+Wo
+Y,tx′
+N+1,t, (17)
+where (16) and (17) correspond to the projections for the
+device pilots and the received signal, respectively. Notice that
+xn and xN+1 are put outside of {xj}N
+j=1,j̸=n in (16), because
+1Notice that the summation of (15) is taken over j rather than n. Therefore,
+x′
+n,t serves as the attention value at the t-th attention head corresponding to
+xn.
+
+
+===== PAGE 7 =====
+7
+ˆx[l]
+n
+=
+
+
+
+
+
+
+
+BNl
+B
+
+x[l−1]
+n
++ MHAl
+B
+
+x[l−1]
+n
+,
+n
+x[l−1]
+j
+oN
+j=1,j̸=n , x[l−1]
+N+1
+
+,
+∀n = 1, . . . , N,
+BNl
+Y
+
+x[l−1]
+N+1 + MHAl
+Y
+
+x[l−1]
+N+1,
+n
+x[l−1]
+j
+oN
+j=1
+
+,
+n = N + 1,
+(8)
+x[l]
+n
+=
+
+
+
+BNl
+B
+
+ˆx[l]
+n + FFl
+B
+
+ˆx[l]
+n
+
+,
+∀n = 1, . . . , N,
+BNl
+Y
+
+ˆx[l]
+N+1 + FFl
+Y
+
+ˆx[l]
+N+1
+
+,
+n = N + 1.
+(9)
+(a) The overall architecture of the MHA block.
+(b) The architecture of attention head t of the MHA block.
+Fig. 2. The architecture of the MHA block.
+x′
+n,t is computed by processing each xj using
+
+Wk
+B,t, Wv
+B,t
+	
+in the same way, while by processing xn and xN+1 using
+n
+Wq
+B,t, Wk
+B,t, Wv
+B,t
+o
+and
+
+Wk
+Y,t, Wv
+Y,t
+	
+, respectively.
+b) FF Computations: Next, we present the computations of
+FFB and FFY in (9), which adopt a two-layer MLP with a
+df-dimensional hidden layer using the ReLu activation:
+FFB (ˆxn) = Wf
+B,2ReLu
+Wf
+B,1ˆxn + bf
+B,1
+
++ bf
+B,2,
+∀n = 1, . . . , N, (18)
+FFY (ˆxN+1) = Wf
+Y,2ReLu
+Wf
+Y,1ˆxN+1 + bf
+Y,1
+
++ bf
+Y,2, (19)
+where {ˆxn}N+1
+n=1 is the output of (8), and Wf
+B,1 ∈Rdf×d,
+bf
+B,1 ∈Rdf, Wf
+B,2 ∈Rd×df, bf
+B,2 ∈Rd, Wf
+Y,1 ∈Rdf×d,
+bf
+Y,1 ∈Rdf, Wf
+Y,2 ∈Rd×df, and bf
+Y,2 ∈Rd are the parameters
+to be optimized during the training procedure. In (18)-(19),
+the heterogeneity is maintained since we use the same set
+of parameters
+
+Wf
+B,1, bf
+B,1, Wf
+B,2, bf
+B,2
+	
+to process {ˆxn}N
+n=1
+(corresponding to the device pilots), while we process ˆxN+1
+(corresponding to the received signal) by another set of pa-
+rameters
+
+Wf
+Y,1, bf
+Y,1, Wf
+Y,2, bf
+Y,2
+	
+.
+c) BN Computations: For the BN computations in (8)
+and (9), it computes the statistics over a batch of training
+samples. Speciﬁcally, let
+n
+˜x(i)
+n ∈RdoIb
+i=1 denote a mini-batch
+of training samples for BN computation. The BN statistics are
+calculated as
+νn
+=
+1
+Ib
+Ib
+X
+i=1
+˜x(i)
+n ,
+∀n = 1, . . . , N + 1,
+(20)
+Γn
+=
+ 
+1
+Ib
+Ib
+X
+i=1
+Λ(i)
+n
+! 1
+2
+,
+∀n = 1, . . . , N + 1,
+(21)
+
+
+===== PAGE 8 =====
+8
+where Λ(i)
+n
+is a diagonal matrix with the diagonal being
+
+˜x(i)
+n −νn
+
+⊙
+
+˜x(i)
+n −νn
+
+. Then, the normalization results
+corresponding to the device pilots and the received signal are
+respectively given by
+BNB
+
+˜x(i)
+n
+
+= wbn
+B ⊙
+
+Γ−1
+n
+
+˜x(i)
+n −νn
+
++ bbn
+B ,
+∀n = 1, . . . , N, (22)
+BNY
+
+˜x(i)
+N+1
+
+= wbn
+Y ⊙
+
+Γ−1
+N+1
+
+˜x(i)
+N+1 −νN+1
+
++ bbn
+Y , (23)
+where wbn
+B ∈Rd, bbn
+B ∈Rd, wbn
+Y ∈Rd, and bbn
+Y ∈Rd are the
+parameters to be optimized during the training procedure.
+3) Decoding Layer
+After the L encoding layers, the produced hidden repre-
+sentations
+n
+x[L]
+n
+oN+1
+n=1 are further passed to a decoding layer
+to output the ﬁnal mapping result. The proposed decoding
+layer consists of a contextual block and an output block. The
+contextual block applies an MHA block to compute a context
+vector xc, which is a weighted sum of the components in
+n
+x[L]
+n
+oN+1
+n=1 :
+xc = MHAC
+
+x[L]
+N+1,
+n
+x[L]
+n
+oN
+n=1
+
+,
+(24)
+where MHAC is similar to MHAY in (17), but using dif-
+ferent parameters Wq,c
+t
+∈Rd′×d, Wk,c
+B,t ∈Rd′×d, Wk,c
+Y,t ∈
+Rd′×d, Wv,c
+B,t ∈Rd′×d, Wv,c
+Y,t ∈Rd′×d, Wo,c
+t
+∈Rd×d′,
+t ∈{1, . . . , T }. In particular,
+n
+Wk,c
+B,t, Wv,c
+B,t
+oT
+t=1 is used
+to process
+n
+x[L]
+n
+oN
+n=1 (corresponding to the device pilots),
+and
+n
+Wq,c
+t , Wk,c
+Y,t, Wv,c
+Y,t, Wo,c
+t
+oT
+t=1 is used to process x[L]
+N+1
+(corresponding to the received signal). The speciﬁc expression
+of MHAC is shown in Appendix A. Each weight in xc reﬂects
+the importance of each component in
+n
+x[L]
+n
+oN+1
+n=1 . Therefore,
+the context vector xc intuitively decides which device pilots
+to pay attention to based on the received signal.
+With xc, the output block decides the ﬁnal output, i.e.,
+the active probability of each device, by scoring how well
+the context vector xc and each x[L]
+n , n ∈{1, . . . , N} match.
+The relevance between the context vector xc and each x[L]
+n
+is
+evaluated by
+αout
+n = C tanh
+ 
+(xc)T Woutx[L]
+n
+√
+d
+!
+,
+∀n = 1, . . . , N,
+(25)
+where Wout ∈Rd×d is a parameter to be optimized during
+the training procedure, and C is a tuning hyperparameter
+that controls αout
+n
+in a reasonable range. Finally, the active
+probability of each device is computed by normalizing αout
+n in
+[0, 1]:
+Pn = OUT
+
+xc, x[L]
+n
+
+=
+1
+1 + e−αout
+n ,
+∀n = 1, . . . , N. (26)
+C. Key Properties and Insights
+The proposed heterogenous transformer for representing
+f (·, ·) has been speciﬁed as an initial embedding layer, L
+encoding layer, and a decoding layer as shown in (5)-(26).
+We examine some key properties of the proposed architecture
+for the activity detection problem as follows.
+a) Relevance Extraction Between Device Pilots and Received
+Signal: Both the proposed encoding and decoding layers
+are built on MHA as shown in (8) and (24), respectively.
+The MHA computation is naturally a weighted sum as
+shown in (15). The attention weight βn,j,t is the normal-
+ization of the attention compatibility αn,j,t in (13), which
+scores how well each pair of xn and xj match. Therefore,
+with the attention weight βn,j,t reﬂecting the importance of
+each xj with respect to xn, each encoding layer learns the
+relevance among different device pilots and the received
+signal. In the decoding layer, the captured relevance is
+further used to compute the context vector xc in (24), which
+ﬁnally extracts the relevance between each device pilot and
+the received signal, and decides which device pilots to pay
+attention to based on the extracted relevance.
+b) Permutation Equivariant with Respect to Devices: As
+shown in (7), the initial embeddings of the devices pilots
+n
+x[0]
+n
+oN
+n=1 are computed using the same parameters Win
+B
+and bin
+B. Therefore, if any two device pilots bi and bj
+are exchanged, the initial embeddings x[0]
+i
+and x[0]
+j
+will
+be automatically exchanged as well. Similarly, since the
+encoding layers produce
+n
+x[L]
+n
+oN
+n=1 through the same
+computations MHAl
+B, FFl
+B, and BNl
+B, and the decoding
+layer produces {Pn}N
+n=1 by the same parameter Wout, we
+can conclude that the ﬁnal output Pi and Pj will also be
+exchanged. This implies that the proposed architecture is
+permutation equivariant with respect to devices.
+c) Scale Adaptable and Generalizable to Different Numbers
+of Devices: In all the layers of the proposed heterogeneous
+transformer, the representations of different device pilots
+are produced with the same architecture using the same set
+of parameters. Therefore, the dimensions of parameters that
+require to be optimized during the training procedure are
+independent of the number of devices. This scale adaptabil-
+ity empowers the whole architecture to be readily applied
+to different numbers of devices, and hence generalizable to
+different numbers of devices.
+D. Learning Procedure
+So far, we have presented the architecture and key properties
+of the proposed heterogeneous transformer. Next, we show
+the learning procedure to optimize the parameters of heteroge-
+neous transformer for device activity detection in Algorithm 1,
+which consists of a training procedure and a test procedure. As
+shown in lines 8-10, we adopt a learning rate decay strategy
+to accelerate the training procedure [44]. In particular, the
+learning rate η is decreased by a factor of β after Nd training
+epochs. During the test procedure, we adopt two metrics to
+assess the performance of device activity detection, i.e., the
+probability of missed detection (PM) and the probability of
+false alarm (PF) [3]–[6], which are respectively given by
+PM
+=
+1 −
+PN
+n=1 an˜an
+PN
+n=1 ˜an
+,
+(27)
+
+
+===== PAGE 9 =====
+9
+Algorithm 1 Learning Procedure for Activity Detection
+1: Training Procedure:
+2: Input: number of epochs Ne, steps per epoch Ns, batch size Nb, and
+learning rate decay epoch Nd and factor β
+3: Initialize: learning rate η
+4: for epoch = 1, . . . , Ne
+5:
+for step = 1, . . . , Ns
+6:
+a) Generate a batch of Nb samples
+b) Compute the mini-batch gradient of the loss function (4) over
+the parameters of heterogeneous transformer
+c) Update the parameters by a gradient descent step using the
+Adam optimizer with learning rate η
+7:
+end
+8:
+if epoch == Nd
+9:
+η ←βη
+10:
+end
+11: end
+12: Output: heterogeneous transformer with optimized parameters
+13: Test Procedure:
+14: Input: Nt test samples
+15: Compute the output of the trained heterogeneous transformer P (i)
+n , n =
+1, . . . , N, i = 1, . . . , Nt
+16: Determine the activity status of each device as a(i)
+n
+= I(P (i)
+n
+> ξ),
+n = 1, . . . , N, i = 1, . . . , Nt
+17: Output: (PM, PF) pairs under different ξ
+PF
+=
+PN
+n=1 an (1 −˜an)
+PN
+n=1(1 −˜an)
+.
+(28)
+In (27) and (28), ˜an is the ground-truth device activity, and
+the detected activity status an = I(Pn > ξ), where ξ is a
+threshold that continually increases in [0, 1] to realize a trade-
+off between PM and PF.
+V. SIMULATION RESULTS
+In this section, simulation results are provided for demon-
+strating the beneﬁts of the proposed learning based method,
+which adopts the problem formulation for learning in Sec-
+tion III and the heterogeneous transformer architecture in
+Section IV.
+A. Simulation Setting
+We consider an uplink MIMO system with IoT devices uni-
+formly distributed within a cell with a 250-meter radius, and
+the ratio of the active devices to the total devices is 0.1. Both
+the training and test samples are generated as follows. The
+pilot sequence of each device is an independently generated
+complex Gaussian distributed vector with i.i.d. elements and
+each element is with zero mean and unit variance. The path-
+loss of the channel is 128.1+37.6 log10 Dn in dB, where Dn is
+the distance in kilometers between the n-th device and the BS.
+In order to reduce the channel gain variations among different
+devices especially for the cell-edge devices, the transmit power
+of each device is controlled as pk = pmax
+gmin
+gk
+[8], where pmax
+is the maximum transmit power and gmin is the minimum
+large-scale channel gain in the cell. The background Gaussian
+noise power at the BS is −169 dBm/Hz over a 10 MHz
+bandwidth. The received signal is generated according to (1),
+where the activity of each device is generated from Bernoulli
+distribution and used as the ground-truth label for the training
+samples.
+For the proposed heterogeneous transformer architecture,
+the number of encoding layers is set as L = 5, the encoding
+size of each encoding layer is d = 128, the number of attention
+heads in the MHA block is T = 8, the dimension of each
+attention space is d′ = 32, and the size of hidden layer of the
+component-wise FF block is df = 512. In the decoding layer,
+the tuning hyperparameter that controls the result of (25) is
+set as C = 10.
+During the training procedure, we apply the Adam optimizer
+in the framework of Pytorch [40] to update the parameters of
+the proposed heterogeneous transformer. In Algorithm 1, the
+number of training epochs is set as Ne = 100. The number of
+gradient descent steps in each epoch is Ns = 5000 and each
+step is updated using a batch of Nb = 256 training samples.
+Consequently, the total number of training samples is 1.28 ×
+106. The learning rate is initialized as η = 10−4. For the
+learning rate decay strategy, we decrease η by a factor of β =
+0.1 after Nd = 90 and 97 training epochs, respectively. After
+the training procedure, the activity detection performance is
+evaluated over Nt = 5000 test samples in terms of PM and
+PF as shown in (27) and (28).
+B. Performance Evaluation
+First, we show the training loss of Algorithm 1 for updating
+the parameters of heterogeneous transformer. During the train-
+ing procedure, the number of devices is set as N = 100 and
+the maximum transmit power is pmax = 23 dBm. The length
+of each pilot sequence is set as Lp = 7 or 8, and the number of
+BS-antennas is set as M = 32 or 64, respectively. The training
+losses versus epochs under different settings are illustrated
+in Fig. 3. It can be seen that the training losses generally
+decrease as the training epoch increases. In particular, due
+to the learning rate decay, the training losses have a sudden
+decrease in the 90-th training epoch, which demonstrates the
+effectiveness of learning rate decay in speeding up the training
+procedure. We also observe from Fig. 3 that the training
+performance can be improved by increasing the the length of
+pilot sequence or equipping with a larger number of antennas
+at the BS.
+Then, we test the corresponding activity detection perfor-
+mance of the well-trained heterogeneous transformer in terms
+of PM and PF. For comparison, we also provide the simulation
+results of state-of-the-art covariance approach, which solves
+problem (3) with the coordinate descent method [22], [23].
+The PM-PF trade-offs are shown in Fig. 4, where the proposed
+learning based method using heterogeneous transformer is
+termed as HT, while state-of-the-art covariance approach is
+termed as Covariance. It can be seen that the proposed method
+always achieves better PM-PF trade-offs than that of the
+covariance approach under different settings. In particular,
+when Lp = 8 and M = 64, the PM of the proposed method is
+about 10 times lower than that of the covariance approach
+under the same PF. This is because the proposed method
+utilizes neural network to mimic the optimal mapping function
+directly from the ground-truth training labels, which provide
+the opportunity to achieve better detection performance than
+the covariance approach that only ﬁnds a stationary point of
+a relaxed problem of (3).
+
+
+===== PAGE 10 =====
+10
+0
+20
+40
+60
+80
+100
+Training epoch
+10-3
+10-2
+10-1
+Training loss
+Fig. 3.
+The training loss of Algorithm 1 for updating the parameters of
+heterogeneous transformer.
+10-4
+10-3
+10-2
+10-1
+100
+PM
+10-4
+10-3
+10-2
+10-1
+100
+PF
+Fig. 4.
+The test performance comparison with state-of-the-art covariance
+approach in terms of PM and PF.
+To further demonstrate the beneﬁts of the properties in-
+corporated in the proposed heterogeneous transformer, we
+also perform the same tasks using MLPs for comparison. In
+particular, we train different MLPs with 4-10 hidden layers and
+256-1024 hidden nodes using the ReLu activation. However,
+without a custom design, none of the MLPs can provide a
+better detection performance than even a random guess (and
+hence are omitted in Fig. 4). This veriﬁes the performance
+gains of the proposed heterogeneous transformer architecture
+for the activity detection problem.
+The average computation times of the approaches over the
+test samples are compared in Table I, where the covariance
+approach is termed as Covariance, and the proposed method
+is termed as either HT CPU or HT GPU, depending on whether
+CPU or GPU is used. In particular, both the covariance
+approach and HT CPU are run on Intel(R) Xeon(R) CPU @
+2.20GHz, while HT GPU is run on Tesla T4. We can see that
+the average computation time of HT CPU is about 100 times
+shorter than that of the covariance approach. Moreover, HT
+TABLE I
+AVERAGE COMPUTATION TIME COMPARISON AMONG DIFFERENT
+APPROACHES
+Covariance
+HT CPU
+HT GPU
+Lp = 7, M = 32
+6.34 × 10−1 s
+6.31 × 10−3 s
+1.60 × 10−6 s
+Lp = 8, M = 32
+6.24 × 10−1 s
+6.32 × 10−3 s
+1.63 × 10−6 s
+Lp = 8, M = 64
+6.33 × 10−1 s
+6.55 × 10−3 s
+2.13 × 10−6 s
+100
+110
+120
+130
+140
+150
+Numer of device
+10-3
+10-2
+10-1
+PM
+(a) PM versus number of devices.
+100
+110
+120
+130
+140
+150
+Number of device
+10-6
+10-4
+10-2
+100
+Computation time in seconds
+(b) Average computation time versus number of devices.
+Fig. 5. Generalization to different numbers of devices.
+GPU achieves a remarkable running speed, with a running time
+over 105 times shorter than that of the covariance approach.
+This demonstrates the superiority of the proposed learning
+based method for real-time implementation compared with the
+covariance approach that is based on iterative computations.
+C. Generalizability
+Next, we demonstrate the generalizability of the proposed
+method with respect to different numbers of devices, BS-
+antennas, and different SNRs. Unless otherwise speciﬁed, the
+length of pilot sequence is set as Lp = 8 in the following
+simulations. We begin by training a heterogeneous transformer,
+
+
+===== PAGE 11 =====
+11
+where the device number of the training samples is ﬁxed as
+N = 100. However, we test the activity detection performance
+under different device numbers from 100 to 150. The number
+of BS-antennas is set as M = 64 and the maximum transmit
+power is pmax = 23 dBm. Due to the trade-off between PM
+and PF, we provide the PM when PF = PM and PF = 2PM
+respectively, by appropriately setting the threshold ξ. In the
+following ﬁgures, “Covariance, PF = PM” and “Covariance,
+PF = 2PM” denote the PM of the covariance approach when
+PF = PM and PF = 2PM respectively, while “HT, PF = PM”
+and “HT, PF = 2PM” represent the PM of the proposed
+method when PF = PM and PF = 2PM respectively. The
+activity detection performance and average computation time
+versus number of devices are illustrated in Fig. 5(a) and
+Fig. 5(b), respectively. We can see from Fig. 5(a) that while
+the activity detection performances of different approaches
+become worse as the number of devices N increases, the PM
+of the proposed method is still comparable with that of the
+covariance approach when N is increased from 100 to 150.
+This demonstrates that the proposed method generalizes well
+to different numbers of devices. On the other hand, Fig. 5(b)
+shows that as N increases, the average computation times of
+both the covariance approach and the proposed method on
+CPU are linearly increased. However, due to the the parallel
+computation of GPU, the average computation time of the
+proposed method on GPU is nearly a constant, i.e., about
+2 × 10−6 second, which is much shorter than that of other
+approaches.
+We further demonstrate the generalizability of the proposed
+method with respect to different numbers of BS-antennas. To
+this end, we train a heterogeneous transformer by ﬁxing the
+number of BS-antennas as M = 32, and then test its activity
+detection performance under different numbers of BS-antennas
+from 32 to 128. The number of devices is N = 100 and the
+maximum transmit power is pmax = 23 dBm. The perfor-
+mance comparisons in terms of PM and average computation
+time are illustrated in Fig. 6(a) and Fig. 6(b), respectively.
+Figure 6(a) shows that as the number of BS-antennas increases,
+the proposed method always achieves much lower PM than
+that of the covariance approach. Although the heterogeneous
+transformer is trained under M = 32, when we test the detec-
+tion performance under M = 128, the PM of the proposed
+method is still 2 times lower than that of the covariance
+approach for both PF = PM and PF = 2PM. This demonstrates
+that the proposed method generalizes well to larger numbers
+of BS-antennas. On the other hand, Fig. 6(b) shows that the
+average computation time of the proposed method on CPU is
+about 100 times shorter than that of the covariance approach,
+and the proposed method on GPU even achieves a 105 times
+faster running speed than that of the covariance approach.
+Finally, the generalizability with respect to different SNRs
+is demonstrated in Fig. 7. The SNR of the training samples is
+ﬁxed by setting the maximum transmit power as pmax = 23
+dBm, while the activity detection performance is tested under
+different SNRs with pmax varying from 11 to 23 dBm. The
+numbers of devices and BS-antennas are N
+= 100 and
+M = 32, respectively. As shown in Fig. 7(a), when the
+SNR decreases as the transmit power becomes lower, the
+32
+48
+64
+80
+96
+112
+128
+Number of BS-antennas
+10-4
+10-3
+10-2
+PM
+(a) PM versus number of BS-antennas.
+32
+48
+64
+80
+96
+112
+128
+Number of BS-antennas
+10-6
+10-5
+10-4
+10-3
+10-2
+10-1
+100
+Computation time in seconds
+(b) Average computation time versus number of BS-antennas.
+Fig. 6. Generalization to different numbers of BS-antennas.
+PM of different approaches becomes higher. However, the
+proposed method still achieves much lower PM than that
+of the covariance approach under different SNRs for both
+PF = PM and PF = 2PM. Therefore, the proposed method
+generalizes well to different SNRs. Besides the superiority
+of activity detection performance, Fig. 7(b) shows that the
+proposed method takes signiﬁcantly shorter computation time
+than that of the covariance approach under different SNRs.
+VI. CONCLUSIONS
+This paper proposed a deep learning based method with a
+customized heterogeneous transformer architecture for device
+activity detection. By adopting an attention mechanism in the
+neural network architecture design, the proposed heteroge-
+neous transformer was incorporated with desired properties
+of the activity detection task. Speciﬁcally, the proposed archi-
+tecture is able to extract the relevance between device pilots
+and received signal, is permutation equivariant with respect to
+devices, and is scale adaptable to different numbers of devices.
+Simulation results showed that the proposed learning based
+
+
+===== PAGE 12 =====
+12
+11
+13
+15
+17
+19
+21
+23
+Maximum transmit power in dBm
+0.01
+0.015
+0.02
+0.025
+0.03
+0.035
+PM
+(a) PM versus maximum transmit power.
+11
+13
+15
+17
+19
+21
+23
+Maximum transmit power in dBm
+10-6
+10-5
+10-4
+10-3
+10-2
+10-1
+100
+Computation time in seconds
+(b) Average computation time versus maximum transmit power.
+Fig. 7. Generalization to different SNRs.
+method achieves much better activity detection performance
+and takes remarkably shorter computation time than state-of-
+the-art covariance approach. Moreover, the proposed method
+was demonstrated to generalize well to different numbers of
+devices, BS-antennas, and different SNRs.
+APPENDIX A
+THE EXPRESSION OF MHAC
+Deﬁne ﬁve sets of parameters Wq,c
+t
+∈Rd′×d, Wk,c
+B,t ∈
+Rd′×d, Wk,c
+Y,t ∈Rd′×d, Wv,c
+B,t ∈Rd′×d, and Wv,c
+Y,t ∈Rd′×d,
+where d′ is the dimension of each attention space and t ∈
+{1, . . . , T }. Then, we compute a query qc
+t for x[L]
+N+1 at the
+t-th attention head:
+qc
+t = Wq,c
+t x[L]
+N+1.
+(A.1)
+The key and value corresponding to each x[L]
+n
+are respectively
+computed as
+kc
+n,t
+=
+(
+Wk,c
+B,tx[L]
+n ,
+∀n = 1, . . . , N,
+Wk,c
+Y,tx[L]
+N+1,
+n = N + 1,
+(A.2)
+vc
+n,t
+=
+(
+Wv,c
+B,tx[L]
+n ,
+∀n = 1, . . . , N,
+Wv,c
+Y,tx[L]
+N+1,
+n = N + 1.
+(A.3)
+To evaluate the relevance between x[L]
+N+1 and each component
+of
+n
+x[L]
+n
+oN+1
+n=1 , we compute a compatibility αc
+n,t using the
+query qc
+t and the key kc
+n,t:
+αc
+n,t = (qc
+t)T kc
+n,t
+√
+d′
+,
+∀n = 1, . . . , N + 1,
+∀t = 1, . . . , T,
+(A.4)
+and the corresponding attention weight is computed by nor-
+malizing αc
+n,t in [0, 1]:
+βc
+n,t =
+eαc
+n,t
+PN+1
+j=1 eαc
+j,t ,
+∀n = 1, . . . , N + 1,
+∀t = 1, . . . , T.
+(A.5)
+With the attention weight βc
+n,t scoring the relevance between
+x[L]
+N+1 and each component of
+n
+x[L]
+n
+oN+1
+n=1 , the attention value
+of x[L]
+N+1 at the t-th attention head is computed as
+x′
+t =
+N+1
+X
+n=1
+βc
+n,tvc
+n,t.
+(A.6)
+The expression of MHAC is ﬁnally given by a combination of
+the T attention values:
+MHAC
+
+x[L]
+N+1,
+n
+x[L]
+n
+oN
+n=1
+
+=
+T
+X
+t=1
+Wo,c
+t x′
+t,
+(A.7)
+where Wo,c
+t
+∈Rd×d′ is the parameter for projecting back to
+a d-dimensional vector.
+REFERENCES
+[1] C. Bockelmann, N. Pratas, H. Nikopour, K. Au, T. Svensson, C. Ste-
+fanovic, P. Popovski, and A. Dekorsy, “Massive machine-type commu-
+nications in 5G: Physical and MAC-layer solutions,” IEEE Commun.
+Mag., vol. 54, no. 9, pp. 59–65, Sep. 2016.
+[2] Z. Dawy, W. Saad, A. Ghosh, J. G. Andrews, and E. Yaacoub, “To-
+ward massive machine type cellular communications,” IEEE Wireless
+Commun. Mag., vol. 24, no. 1, pp. 120–128, Feb. 2017.
+[3] L. Liu, E. G. Larsson, W. Yu, P. Popovski, ˇC. Stefanovi´c, and E. de Car-
+valho, “Sparse signal processing for grant-free massive connectivity: A
+future paradigm for random access protocols in the internet of things,”
+IEEE Signal Process. Mag., vol. 35, no. 5, pp. 88–99, Sep. 2018.
+[4] L. Liu and W. Yu, “Massive connectivity with massive MIMO-Part I:
+Device activity detection and channel estimation,” IEEE Trans. Signal
+Process., vol. 66, no. 11, pp. 2933–2946, Jun. 2018.
+[5] L. Liu and W. Yu, “Massive connectivity with massive MIMO–Part II:
+Achievable rate characterization,” IEEE Trans. Signal Process., vol. 66,
+no. 11, pp. 2947–2959, Jun. 2018.
+[6] Z. Chen, F. Sohrabi, and W. Yu, “Sparse activity detection for massive
+connectivity,” IEEE Trans. Signal Process., vol. 66, no. 7, pp. 1890–
+1904, Apr. 2018.
+[7] Z. Sun, Z. Wei, L. Yang, J. Yuan, X. Cheng, and L. Wan, “Exploiting
+transmission control for joint user identiﬁcation and channel estimation
+in massive connectivity,” IEEE Trans. Commun., vol. 67, no. 9, pp.
+6311–6326, Sep. 2019.
+[8] K. Senel and E. G. Larsson, “Grant-free massive MTC-enabled massive
+MIMO: A compressive sensing approach,” IEEE Trans. Commun.,
+vol. 66, no. 12, pp. 6164–6175, Dec. 2018.
+[9] S. Jiang, X. Yuan, X. Wang, C. Xu, and W. Yu, “Joint user identiﬁcation,
+channel estimation, and signal detection for grant-free NOMA,” IEEE
+Trans. Wireless Commun., vol. 19, no. 10, pp. 6960–6976, Oct. 2020.
+
+
+===== PAGE 13 =====
+13
+[10] Z. Utkovski, O. Simeone, T. Dimitrova, and P. Popovski, “Random
+access in C-RAN for user activity detection with limited-capacity
+fronthaul,” IEEE Signal Process. Lett., vol. 24, no. 1, pp. 17–21, Jan.
+2017.
+[11] Z. Chen, F. Sohrabi, and W. Yu, “Multi-cell sparse activity detection for
+massive random access: Massive MIMO versus cooperative MIMO,”
+IEEE Trans. Wireless Commun., vol. 18, no. 8, pp. 4060–4074, Aug.
+2019.
+[12] M. Ke, Z. Gao, Y. Wu, X. Gao, and K.-K. Wong, “Massive access in
+cell-free massive MIMO-based internet of things: Cloud computing and
+edge computing paradigms,” IEEE J. Sel. Areas Commun., vol. 39, no. 3,
+pp. 756–772, Mar. 2021.
+[13] X. Xu, X. Rao, and V. K. Lau, “Active user detection and channel
+estimation in uplink CRAN systems,” in IEEE ICC, 2015.
+[14] J. Ahn, B. Shim, and K. B. Lee, “EP-based joint active user detection and
+channel estimation for massive machine-type communications,” IEEE
+Trans. Commun., vol. 67, no. 7, pp. 5178–5189, Jul. 2019.
+[15] X. Liu, Y. Shi, J. Zhang, and K. B. Letaief, “Massive CSI acquisition
+for dense cloud-RANs with spatial-temporal dynamics,” IEEE Trans.
+Wireless Commun., vol. 17, no. 4, pp. 2557–2570, Apr. 2018.
+[16] Q. He, T. Q. S. Quek, Z. Chen, Q. Zhang, and S. Li, “Compressive chan-
+nel estimation and multi-user detection in C-RAN with low-complexity
+methods,” IEEE Trans. Wireless Commun., vol. 17, no. 6, pp. 3931–
+3944, Jun. 2018.
+[17] Y. Li, M. Xia, and Y.-C. Wu, “Activity detection for massive connectivity
+under frequency offsets via ﬁrst-order algorithms,” IEEE Trans. Wireless
+Commun., vol. 18, no. 3, pp. 1988–2002, Mar. 2019.
+[18] X. Shao, X. Chen, and R. Jia, “A dimension reduction-based joint
+activity detection and channel estimation algorithm for massive access,”
+IEEE Trans. Signal Process., vol. 68, no. 1, pp. 420–435, Jan. 2020.
+[19] S. Haghighatshoar, P. Jung, and G. Caire, “Improved scaling law for
+activity detection in massive MIMO systems,” in IEEE ISIT, 2018.
+[20] X. Shao, X. Chen, D. W. K. Ng, C. Zhong, and Z. Zhang, “Coopera-
+tive activity detection: Sourced and unsourced massive random access
+paradigms,” IEEE Trans. Signal Process., vol. 68, pp. 6578–6593, 2020.
+[21] D. Jiang and Y. Cui, “ML estimation and MAP estimation for device
+activities in grant-free random access with interference,” in IEEE WCNC,
+2020.
+[22] Z. Chen, F. Sohrabi, and W. Yu, “Sparse activity detection in multi-
+cell massive MIMO exploiting channel large-scale fading,” IEEE Trans.
+Signal Process., vol. 69, pp. 3768–3781, 2021.
+[23] U. K. Ganesan, E. Bj¨ornson, and E. G. Larsson, “Clustering based
+activity detection algorithms for grant-free random access in cell-free
+massive MIMO,” IEEE Trans. Commun., vol. 69, no. 11, pp. 7520–
+7530, Nov. 2021.
+[24] A. Fengler, S. Haghighatshoar, P. Jung, and G. Caire, “Non-Bayesian ac-
+tivity detection, large-scale fading coefﬁcient estimation, and unsourced
+random access with a massive MIMO receiver,” IEEE Trans. Inf. Theory,
+vol. 67, no. 5, pp. 2925–2951, May 2021.
+[25] Z. Chen, F. Sohrabi, Y.-F. Liu, and W. Yu, “Phase transition analysis for
+covariance based massive random access with massive MIMO,” IEEE
+Trans. Inf. Theory, to appear 2021, doi: 10.1109/TIT.2021.3132397.
+[26] H. Sun, X. Chen, Q. Shi, M. Hong, X. Fu, and N. D. Sidiropoulos,
+“Learning to optimize: Training deep neural networks for interference
+management,” IEEE Trans. Signal Process., vol. 66, no. 20, pp. 5438–
+5453, Oct. 2018.
+[27] M. Zhu, T. Chang, and M. Hong, “Learning to beamform in het-
+erogeneous massive MIMO networks,” 2020. [Online]. Available:
+https://arxiv.org/abs/2011.03971.
+[28] Y. Shen, Y. Shi, J. Zhang, and K. B. Letaief, “Graph neural networks for
+scalable radio resource management: Architecture design and theoretical
+analysis,” IEEE J. Sel. Areas Commun., vol. 39, no. 1, pp. 101–115, Jan.
+2021.
+[29] J. Guo and C. Yang, “Learning power allocation for multi-cell-multi-
+user systems with heterogeneous graph neural network,” IEEE Trans.
+Wireless Commun., to appear 2021, doi: 10.1109/TWC.2021.3100133.
+[30] K. Hornik, M. Stinchcombe, and H. White, “Multilayer feedforward
+networks are universal approximators,” Neural Networks, vol. 2, no. 5,
+pp. 359–366, 1989.
+[31] M. Eisen and A. Ribeiro, “Optimal wireless resource allocation with
+random edge graph neural networks,” IEEE Trans. Signal Process.,
+vol. 68, pp. 2977–2991, 2020.
+[32] F. Sohrabi, K. M. Attiah, and W. Yu, “Deep learning for distributed
+channel feedback and multiuser precoding in FDD massive MIMO,”
+IEEE Trans. Wireless Commun., vol. 20, no. 7, pp. 4044–4057, Jul.
+2021.
+[33] T. Jiang, H. V. Cheng, and W. Yu, “Learning to reﬂect and to beamform
+for intelligent reﬂecting surface with implicit channel estimation,” IEEE
+J. Sel. Areas Commun., vol. 39, no. 7, pp. 1931–1945, Jul. 2021.
+[34] Y. Li, Z. Chen, G. Liu, Y.-C. Wu, and K.-K. Wong, “Learning to
+construct nested polar codes: An attention-based set-to-element model,”
+IEEE Commun. Lett., vol. 25, no. 12, pp. 3898–3902, Dec. 2021.
+[35] Y. Cui, S. Li, and W. Zhang, “Jointly sparse signal recovery and support
+recovery via deep learning with applications in MIMO-based grant-free
+random access,” IEEE J. Sel. Areas Commun., vol. 39, no. 3, pp. 788–
+803, Mar. 2021.
+[36] Y. Shi, H. Choi, Y. Shi, and Y. Zhou, “Algorithm unrolling for massive
+access via deep neural network with theoretical guarantee,” IEEE Trans.
+Wireless Commun., to appear 2021, doi: 10.1109/TWC.2021.3100500.
+[37] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” in Advances
+in Neural Information Processing Systems, 2017.
+[38] P.-T. de Boer, D. P. Kroese, S. Mannor, and R. Y. Rubinstein, “A tutorial
+on the cross-entropy method,” Annals of Operations Research, vol. 134,
+no. 1, pp. 19–67, Jan. 2005.
+[39] D. Kingma and J. Ba, “Adam: A method for stochastic optimization,”
+in International Conference on Learning Representations, 2014.
+[40] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan,
+T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf,
+E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner,
+L. Fang, J. Bai, and S. Chintala, “Pytorch: An imperative style, high-
+performance deep learning library,” in Advances in Neural Information
+Processing Systems, 2019.
+[41] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image
+recognition,” in IEEE CVPR, 2016.
+[42] J. Ba, J. Kiros, and G. E. Hinton, “Layer normalization,” 2016. [Online].
+Available: https://arxiv.org/abs/1607.06450.
+[43] S. Ioffe and C. Szegedy, “Batch normalization: Accelerating deep
+network training by reducing internal covariate shift,” in International
+Conference on Machine Learning, 2015.
+[44] K. You, M. Long, J. Wang, and M. I. Jordan, “How does learning
+rate decay help modern neural networks?” 2019. [Online]. Available:
+https://arxiv.org/abs/1908.01878.

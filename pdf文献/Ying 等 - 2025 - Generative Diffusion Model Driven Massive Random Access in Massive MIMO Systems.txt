@@ -1,0 +1,2861 @@
+
+
+===== PAGE 1 =====
+arXiv:2505.12382v1  [cs.IT]  18 May 2025
+1
+Generative Diffusion Model Driven Massive Random
+Access in Massive MIMO Systems
+Keke Ying, Zhen Gao, Member, IEEE, Sheng Chen, Life Fellow, IEEE, Tony Q.S. Quek, Fellow, IEEE,
+and H. Vincent Poor, Life Fellow, IEEE
+Abstract—Massive random access is an important technology
+for achieving ultra-massive connectivity in next-generation wireless
+communication systems. It aims to address key challenges during
+the initial access phase, including active user detection (AUD),
+channel estimation (CE), and data detection (DD). This paper
+examines massive access in massive multiple-input multiple-output
+(MIMO) systems, where deep learning is used to tackle the
+challenging AUD, CE, and DD functions. First, we introduce a
+Transformer-AUD scheme tailored for variable pilot-length access.
+This approach integrates pilot length information and a spatial
+correlation module into a Transformer-based detector, enabling a
+single model to generalize across various pilot lengths and antenna
+numbers. Next, we propose a generative diffusion model (GDM)-
+driven iterative CE and DD framework. The GDM employs a
+score function to capture the posterior distributions of massive
+MIMO channels and data symbols. Part of the score function
+is learned from the channel dataset via neural networks, while
+the remaining score component is derived in a closed form by
+applying the symbol prior constellation distribution and known
+transmission model. Utilizing these posterior scores, we design an
+asynchronous alternating CE and DD framework that employs
+a predictor-corrector sampling technique to iteratively generate
+channel estimation and data detection results during the reverse
+diffusion process. Simulation results demonstrate that our pro-
+posed approaches significantly outperform baseline methods with
+respect to AUD, CE, and DD.
+Index Terms—Deep learning, massive MIMO, massive random
+access, Transformer, generative models.
+I. INTRODUCTION
+I
+N wireless communications, multi-user random access is
+a critical step in establishing initial communication links.
+This process involves techniques such as activity user detection
+(AUD), channel estimation (CE), and multi-user data detec-
+tion (DD). Traditional cellular networks often use scheduling-
+based access protocols and orthogonal multiple access methods
+[1]. As networks evolve, the 6G vision outlines more strin-
+gent performance requirements for scenarios involving massive
+communication. This vision necessitates a connection density
+Keke Ying is with the School of Information and Electronics, Beijing Institute
+of Technology, Beijing 100081, China (e-mail: ykk@bit.edu.cn).
+Zhen Gao (corresponding author) is with State Key Laboratory of CNS/ATM,
+Beijing Institute of Technology (BIT), Beijing 100081, China, also with BIT
+Zhuhai 519088, China, also with the MIT Key Laboratory of Complex-Field
+Intelligent Sensing, BIT, Beijing 100081, China, also with the Advanced
+Technology Research Institute of BIT (Jinan), Jinan 250307, China, and also
+with the Yangtze Delta Region Academy, BIT (Jiaxing), Jiaxing 314019, China
+(e-mail: gaozhen16@bit.edu.cn).
+Sheng Chen is with the School of Computer Science and Technology, Ocean
+University of China, Qingdao 266100, China (e-mail: sqc@ecs.soton.ac.uk).
+T. Q. S. Quek is with the Singapore University of Technology and Design,
+Singapore 487372, and also with the Yonsei Frontier Lab, Yonsei University,
+South Korea (e-mail: tonyquek@sutd.edu.sg).
+H.
+Vincent
+Poor
+is
+with
+the
+Department
+of
+Electrical
+and
+Com-
+puter Engineering, Princeton University, Princeton, NJ 08544 USA (e-mail:
+poor@princeton.edu).
+ranging from 106 to 108 devices per square kilometer [2]. As the
+number of users increases, dependence on orthogonal multiple
+access will lead to excessive overhead, substantially affecting
+communication efficiency.
+To overcome the limitations of existing scheduling-based
+random access protocols, the grant-free non-orthogonal multiple
+access scheme has been proposed [1]. By eliminating the need
+for complex handshaking between users and the base station
+(BS), terminals can directly transmit uplink signals composed of
+non-orthogonal preamble sequences and payload data. This ap-
+proach effectively reduces communication delays while enabling
+more devices to access the network simultaneously. However, it
+also increases the complexity of designing receiver detection al-
+gorithms. Researchers have developed various advanced receiver
+algorithms, which can be applied to one or more tasks in AUD,
+CE, and DD, depending on the specific challenges considered.
+A. Related Work
+For massive random access, identifying the set of active users
+is a prerequisite for executing subsequent transmission tasks.
+Studies in [3]–[5] have developed a covariance-based AUD
+method. This approach initially derives the likelihood function
+of user activity from received signals using a transmission
+model, framing AUD as a maximum likelihood estimation
+problem. The coordinate descent method is then employed to it-
+eratively estimate each user’s activity. However, the algorithm’s
+computational complexity is high due to the need for computing
+the inverse of the covariance matrix in each iteration and per-
+forming serial iterative estimation for multiple users. To address
+this challenge, the authors of [6], [7] proposed advanced neural
+network-based AUD methods, which adopt binary cross-entropy
+as the loss function and utilize a heterogeneous Transformer
+to directly map received signals to the active user support set,
+achieving superior active user detection performance and low
+inference latency.
+The aforementioned research assumes that the channel be-
+tween users and the BS is characterized by a multi-antenna
+Rayleigh channel, and it does not tackle the scenarios of non-
+Rayleigh channels. In non-Rayleigh environments, a common
+strategy involves the joint execution of AUD and CE tasks.
+This is often framed as a compressed sensing (CS) problem,
+which is solved using traditional greedy algorithms, Bayesian
+approaches, or deep learning methods. For example, the ex-
+isting algorithms, such as orthogonal matching pursuit (OMP)
+[8], approximate message passing (AMP) [9], and orthogonal
+AMP (OAMP) [10], exploit the inherent sparsity of user ac-
+tivity to recover the user channel matrix while simultaneously
+identifying active users. To reduce computational complexity
+and enhance overall performance, model-driven deep learning
+
+
+===== PAGE 2 =====
+2
+approaches [11], [12] have been developed based on traditional
+CS algorithm frameworks. By integrating learnable parameters
+with the conventional backbones, such networks demonstrate
+superior performance under low pilot overhead conditions while
+significantly accelerating convergence. However, since the pri-
+mary aim of CS is CE, with activity detection as a secondary
+outcome, joint AUD and CE methods typically necessitate
+higher pilot overhead than covariance-based techniques, which
+directly target the active user set detection [3].
+Once the AUD and CE processes are completed, the massive
+MIMO DD problem at BS often becomes overdetermined.
+Various advanced detection algorithms have been developed
+to address this challenge. In addition to traditional methods
+like least squares (LS) and linear minimum mean square error
+(LMMSE), algorithms such as OAMP [13], expectation propa-
+gation (EP) [14], and deep learning-based techniques [15]–[18]
+have demonstrated excellent performance. However, these DD
+methods rely on the channel state information (CSI) estimated
+in the earlier stage, and errors in CSI estimation will degrade
+the detection performance.
+Performing joint CE and DD (JCEDD) can enhance overall
+achievable performance. The work [16] presents an iterative
+JCEDD scheme that accounts for channel estimation errors
+during data detection and employs a model-driven OAMP
+unfolding algorithm to improve detection. In the CE phase,
+demodulated data are used as pilots to augment LMMSE
+CE, resulting in superior performance. Additionally, message-
+passing algorithms have been developed for the joint AUD,
+CE, and DD [19], [20]. Despite their good performance, these
+algorithms necessitate intricate message-passing processes, with
+convergence and performance heavily reliant on initial estimates
+and the alignment between the assumed prior distribution and
+the underlying system’s probability distribution, thereby limiting
+their applicability.
+In recent years, generative model-based methods have been
+extensively applied to address inverse problems in commu-
+nications. Unlike Bayesian algorithms, which require manual
+assumptions of prior signal distributions, generative models
+employ neural networks to model the signal prior, offering a
+more effective representation of complex signal distributions.
+As detailed in [21], the score matching with Langevin dynamics
+(SMLD) framework is used to tackle the CE problem. This
+approach involves estimating the score function, defined as
+the gradient of a log-probability density function [22]. By
+combining the channel prior’s score function, learned from a
+neural network, with the likelihood score derived from observa-
+tions, the posterior estimate of high-dimensional channels can
+be incrementally sampled from Gaussian noise using annealed
+Langevin dynamics (ALD) [22], [23]. The SMLD framework
+can also address the MIMO detection problem [24]–[26]. To
+handle the non-differentiable symbol constellation prior, a noise-
+perturbed version of the symbol’s distribution serves as a proxy
+function to derive the score function [25]. Furthermore, the
+SMLD framework has been effectively applied to the JCEDD
+problem [27] as well as the quantized CE problem [28], demon-
+strating improved performance over existing deep learning and
+traditional methods.
+Another category of generative model frameworks is the
+denoising diffusion probabilistic model (DDPM) [29]. DDPM
+methods have been widely applied to denoising tasks in com-
+munication systems. For example, the study [30] proposed a
+lightweight diffusion model that first obtains an initial CE using
+LS and then progressively denoises it to enhance CE perfor-
+mance. Additionally, the work [31] applied diffusion models
+to denoise semantic features at the receiver, thereby improving
+semantic transmission performance.
+It has been indicated in [32] that the DDPM process implicitly
+calculates score function for each noise level, and both DDPM
+and SMLD can be unified under the framework of score-
+based generative models. These models can be described using
+stochastic differential equations (SDEs), which model both the
+forward noise-injection and reverse generation processes. This
+SDE approach offers greater flexibility in sampling algorithms,
+resulting in improved performance compared to existing gener-
+ative models.
+B. Our Contributions
+This paper proposes a new two-stage algorithm to solve the
+AUD, CE, and DD tasks in massive random access systems.
+The first stage identifies the active users set (AUS) through
+a Transformer-based detector, while the second stage utilizes
+generative diffusion models (GDMs) to perform JCEDD for
+active user equipment (UEs). By contrast, traditional approaches
+based on CS first explicitly estimate the channels and then
+perform AUD and DD, which degrades dramatically in the case
+of insufficient pilots, while covariance-based approaches only
+consider AUD and neglect CE and DD. Our main contributions
+are summarized as follows.
+• We design a variable pilot length AUD network (VPL-
+AUDNet) for AUD task. Specifically: 1) We propose the
+variable pilot length transmission framework and corre-
+sponding adaption mechanism that allows a single network
+to be applicable to different pilot lengths without retraining.
+2) We introduce a spatial correlation mechanism to ex-
+tract spatial correlation features from the received signals,
+thereby improving network-based AUD performance in
+complex correlated channels.
+• We model the CE and DD tasks as reverse diffusion
+processes that sample from a joint distribution. These
+processes gradually transform initial noise into the orig-
+inal channel and data symbols. By employing advanced
+predictor-corrector samplers, our scheme outperforms ex-
+isting JCEDD schemes.
+• To accommodate the distinct distribution characteristics of
+unknown continuous channel distributions and known dis-
+crete data constellation distributions, we propose an asyn-
+chronous iterative CE and DD framework. This framework
+integrates an LMMSE-based CE initialization method,
+which reduces the number of sampling steps and enhances
+convergence performance.
+The remainder of this paper is organized as follows. Section II
+briefly introduces the massive access system model, and Sec-
+tion II formulates the problems of AUD and JCEDD. Section IV
+details the proposed Transformer-based AUD scheme, while
+Section V elaborates on our generative models-based JCEDD
+
+
+===== PAGE 3 =====
+3
+scheme. Section VI presents the simulation results, and Sec-
+tion VII concludes the paper.
+Notations: Matrices and column vectors are denoted by
+uppercase and lowercase boldface letters, respectively. IN is
+the N × N identity matrix, 0N×M is the N × M all-zero
+matrix, and 1N is the N × 1 all-one vector. (·)T, (·)∗, (·)H,
+(·)−1, and E{·} denote the transpose, conjugate, Hermitian
+transpose, inversion, and expectation operations, respectively.
+|A|c indicates the cardinality of the set A. diag(a) transforms
+vector a into the corresponding diagonal matrix. N (x; a, A)
+denotes the probability density function (PDF) of a Gaussian
+random vector x with mean a and covariance matrix A, and
+the PDF of a complex-valued Gaussian random vector is denoted
+by Nc(·; ·, ·). X[:,A] (X[A,:]) refers to the sub-matrix comprising
+the columns (rows) of X identified by the index set A, while
+⊗and ⊙denotes Kronecker and Hadamard product operations,
+respectively. The operator vec(·) stacks a matrix column by
+column into a vector, and [X]i,j is the (i, j)-th element of X.
+⌊·⌋denotes the integer floor operator.
+II. SYSTEM MODEL
+In this study, we examine a typical narrowband uplink random
+access scenario where K potential UEs are served by a single
+BS. The BS is equipped with a uniform planar array (UPA) of
+M = Mx×My antennas, with Mx and My antennas positioned
+along the x-axis and y-axis, respectively. For simplicity, each
+UE is assumed to use a single antenna. In a specific transmission
+frame, only Ka ≪K UEs are active due to the sporadic trans-
+mission characteristic of massive random access. The activity
+of a UE is represented by the indicator αk, where αk = 1
+indicates that the k-th UE is active, and αk = 0 otherwise. By
+defining the AUS as A = {k | αk = 1, 1 ≤k ≤K}, we have
+Ka = |A|c.
+For the k-th active UE, the uplink frame consists of Lp pilot
+symbols pk ∈CLp followed by Ld data symbols xk ∈CLd.
+These pilot and data symbols form a frame sk =
+
+pT
+k , xT
+k
+T ∈
+CL of length L = Lp+Ld. The channel vector between the k-th
+UE and the BS is denoted by hk ∈CM, which is assumed to
+remain constant throughout the entire transmission frame. The
+received signal matrix Y ∈CL×M over a frame from all the
+active UEs is expressed as:
+Y =
+K
+X
+k=1
+αkskhT
+k + W ,
+(1)
+where W ∈CL×M is the noise matrix, whose elements are
+symmetric complex additive Gaussian white noise (AWGN)
+with zero mean and variance σ2
+n.
+Define S ≜
+
+s1, s2, . . . , sK
+
+∈CL×K, A ≜diag(α) =
+diag
+
+α1, α2, . . . , αK
+T
+∈CK×K, ¯
+H ≜
+
+h1, h2, . . . , hK
+T ∈
+CK×M, and H ≜A ¯
+H. Then, the received signal matrix can be
+expressed as:
+Y = SA ¯
+H + W = SH + W .
+(2)
+By splitting the pilot and data components in S into two
+parts, i.e., P
+≜
+
+p1, p2, . . . , pK
+
+∈CLp×K and X
+≜
+
+x1, x2, . . . , xK
+
+∈CLd×K, we have S =
+
+P T, XTT ∈CL×K
+and Y =
+
+Y T
+p , Y T
+d
+T ∈CL×M, where Yp ∈CLp×M and Yd ∈
+CLd×M correspond to the received pilot and data components,
+respectively. We also denote W =
+
+W T
+p , W T
+d
+
+∈CL×M with
+Wp ∈CLp×M and Wd ∈CLd×M.
+III. PROBLEM FORMULATION
+The proposed massive random access system is depicted in
+Fig. 1, where the BS needs to solve the problems of AUD and
+JCEDD. Specifically, we divide the AUD, CE, and DD tasks
+into the two stages. In the first stage, we use a single model to
+derive the AUS information from the received pilots of variable
+lengths. In the second stage, we perform the JCEDD using the
+powerful generation capability of diffusion models.
+A. Stage 1-AUD
+Due to activity sparsity, existing CS methods [8]–[12] re-
+cover the entire sparse channel matrix, which requires a large
+pilot overhead to accurately estimate the CSI. As discussed in
+Section I, covariance-based methods [3]–[5] have not been suc-
+cessfully generalized to non-Rayleigh channels. Additionally,
+current deep learning-based methods [6], [7] fail to generalize
+to variable pilot lengths once the network is trained with a
+fixed pilot length. To address these issues, we propose a neural
+network-based method that can generalize to variable pilot
+Uplink 
+Massive 
+Random 
+Access 
+Channel
+VPL-AUDNet
+ˆ
+
+
+Autocorrelation
+Linear 
+Linear
+Heterogeneous
+Transformer
+Network
+Pilot Length 
+Adaptive Module 
+(PLAM)
+Activity  
+decoder
+Binary threshold 
+detector
+BS
+Spatial correlation 
+Module (SCM)
+Zero Padding
+
+
+1
+K
+k
+k
+p
+p
+Y
+1
+p1
+1
+p2
+1
+0
+1
+0
+
+pK
+Pilot Pre-allocaion
+Power 
+Normalization
+Power 
+Normalization
+Power 
+Normalization
+User 1  
+User 2  
+User K  
+1
+Pilot Pool
+   Inactive UE
+    Active UE
+Pilot Transmission
+1
+0
+1
+0
+1
+0
+1
+0
+Lp
+m
+max
+p
+L
+m
+m
+p
+Y
+Input Preprocessing
+Intermediate Layer
+Output Layer
+max
+p
+L
+max
+p
+L
+1
+
+1p
+2
+
+K
+
+2p
+K
+p
+Fig. 1: System diagram of the massive random access with variable-length pilot transmission and corresponding VPL-AUDNet at the receiver.
+
+
+===== PAGE 4 =====
+4
+lengths and perform well with low pilot overhead in complex
+correlated channel environments.
+We assume that the original pilot sequence for each UE,
+denoted as ˜pk, is selected from a large pilot pool
+˜P =
+[˜p1, ˜p2, . . . , ˜pK] ∈CLmax
+p ×K and is pre-allocated by the BS
+when the UE initially registers with the BS. The UE identity is
+then bound to this pilot sequence until it un-registers from the
+network. During the transmission procedure as shown in the left
+part of Fig. 1, only the first Lp symbols of each pilot sequence
+are transmitted. That is, each pilot sequence is masked by a
+binary vector m=[1, . . . , 1, 0, . . . , 0]T ∈{0, 1}Lmax
+p , whose first
+Lp elements are ones and the remaining
+Lmax
+p
+−Lp
+
+elements
+are zeros. Here, Lp can take a value in the range [Lmin
+p , Lmax
+p
+].
+Let M = 1T
+K ⊗m ∈BLmax
+p ×K. Then, at the AUD stage, the
+BS identifies the active UEs from the received pilot signals,
+expressed as:
+˜Yp =
+
+˜P ⊙M
+
+H + ˜
+Wp.
+(3)
+Here, ˜Yp =
+h
+Y T
+p , 0(Lmax
+p −Lp)×M
+i
+∈CLmax
+p ×M is the equivalent
+received pilot after zero-padding it to the maximum pilot
+sequence length. Similarly,
+˜
+Wp =
+h
+W T
+p , 0(Lmax
+p −Lp)×M
+i
+∈
+CLmax
+p ×M
+is
+the
+equivalent
+noise
+at
+the
+receiver.
+Since
+the equivalent channel matrix can be written as H
+=
+[α1h1, α2h2, . . . , αKhK]T ∈CK×M, estimating the activity
+ˆα = [ˆα1, ˆα2, . . . , ˆαK]T ∈BK×1 is equivalent to recognizing
+the support set of H.
+The AUD problem can then be formulated as follows:
+min
+Φ
+E
+
+L
+α, ˆα
+	
+,
+s.t.
+ˆα = fΦ
+
+˜Yp, ˜P , Lp
+
+, ∀Lp ∈
+
+Lmin
+p , Lmax
+p
+
+,
+(4)
+where fΦ
+
+˜Yp, ˜P , Lp
+
+is a neural network which maps the
+received signal and pilot sequences to ˆα, Φ represents the
+parameters of the neural network, and L (α, ˆα) is the loss
+function that quantifies the disparity between α and ˆα.
+The advantage of variable pilot-length transmission is not
+only to avoid training and storing multiple neural networks
+for different pilot lengths but also to allow the UE to transmit
+different pilot lengths according to varying traffic densities at
+different times of the day. This reduces transmission delay while
+maintaining flexibility. The proposed AUD scheme is detailed
+Section IV.
+B. Stage 2-JCEDD
+Given the estimated AUS ˆ
+A = {k | ˆαk = 1, 1 ≤k ≤K}, the
+transmission model can be equivalently formulated as:
+Y = S[:, ˆ
+A]H[ ˆ
+A,:] + ˜
+W ,
+(5)
+where S[:, ˆ
+A] =
+h
+P T
+[:, ˆ
+A], XT
+[:, ˆ
+A]
+iT
+∈X L× ˆ
+Ka, with X denoting the
+quadrature amplitude modulation (QAM) constellation set, and
+H[ ˆ
+A,:] ∈C ˆ
+Ka×M. For convenience, define Sa ≜S[:, ˆ
+A], Pa ≜
+P[:, ˆ
+A], Xa ≜X[:, ˆ
+A], and Ha ≜H[ ˆ
+A,:]. Given the known
+observations Y and pilots Pa, we find the maximum a posteriori
+estimation of both the data symbols Xa and channels Ha, which
+can be formulated as:
+ ˆ
+Xa, ˆ
+Ha
+	
+= arg
+max
+Xa∈X Ld× ˆ
+Ka,Ha
+p (Xa, Ha|Y , Pa) .
+(6)
+The above problem can be divided into the two sub-problems
+when one of the two variables is assumed to be known:
+ˆ
+Xa = arg
+max
+Xa∈X Ld× ˆ
+Ka p
+
+Xa|Y , ˆ
+Ha, Pa
+
+,
+(7a)
+ˆ
+Ha = arg max
+Ha
+p
+
+Ha|Y , ˆ
+Xa, Pa
+
+.
+(7b)
+Different from typical passing algorithms that factorize the
+joint distribution (6) into a factor graph and then inferring the
+posterior distribution of each element through message passing,
+our proposed scheme directly samples the signals from the
+posterior distributions (7a) and (7b). This approach was first
+implemented in [21], [25]–[27], where the ALD sampler is
+used to sample from the posterior distribution in the CE or DD
+problem.
+The ALD sampler provides a viable method for sampling
+from complex distributions. Recent advances highlight the sig-
+nificant role of the score function in the ALD sampler, revealing
+a strong connection to the denoiser in the widely recognized
+DDPM model. Both concepts can be clarified through the per-
+spective of SDE [32]. Specifically, sampling from a distribution
+can be interpreted as solving the reverse SDE of a corresponding
+forward SDE in the diffusion process. Based on this insight, we
+address the shortcomings of the existing ALD sampler [27] to
+provide more reliable estimation results for the JCEDD problem.
+The proposed JCEDD scheme is detailed in Section V.
+IV. TRANSFORMER-BASED AUD FOR VARIABLE PILOT
+LENGTHS
+As illustrated in the right part of Fig. 1, the receiver’s primary
+function is to extract correlations between the received signal
+and the user pilot sequences, facilitating the identification of
+active users whose pilots contribute to the received signal.
+We propose a VPL-AUDNet consisting of three main blocks.
+First, in the preprocessing block, we design a unified method
+for preprocessing received pilot signals with varying lengths.
+In the second block, the feature sequences from the previous
+block are concurrently fed into a neural network for correlation
+extraction, utilizing a heterogeneous Transformer network as the
+backbone [6] to handle the different physical meanings of the
+received signal and pilot sequences. To accommodate variable
+pilot lengths, we incorporate an additional pilot length adaptive
+module (PLAM) to make the Transformer network cognizant of
+key information from the input sequence. In the output layer, the
+activity decoder calculates the correlation between the feature
+sequences of ˜Yp and the multi-user pilot sequences {˜pk}K
+k=1
+to estimate the user activity vector λ. The detailed AUD signal
+processing flow at the receiver is presented below.
+A. Preprocessing
+Before inputting the user pilots and received signals into the
+Transformer-network block, preprocessing is required to ensure
+dimensional consistency. The user pilots need to be converted
+
+
+===== PAGE 5 =====
+5
+3x
+Fig. 2: Block diagram of the proposed spatial correlation module.
+into real-valued representations, resulting in K sequences, de-
+noted as zo
+k ≜
+
+ℜ{˜pk}T, ℑ{˜pk}TT ∈R2Lmax
+p , 1≤k≤K, each of
+length 2Lmax
+p
+. These sequences are then processed through a lin-
+ear layer to produce the pilot feature sequences {z1
+k}K
+k=1, each
+of length d. Concurrently, to handle varying pilot transmission
+lengths Lp at the receiver, zero-padding is applied to the re-
+ceived signal Yp ∈CLp×M to convert it into ˜Yp ∈CLmax
+p ×M (see
+(3)). Subsequently, to leverage the multi-antenna observations
+at the BS, the covariance matrix [4], [6] of the received signals
+is calculated as C ≜˜Yp ˜Y H
+p /M ∈CLmax
+p ×Lmax
+p . This covariance
+matrix is transformed into a real-valued vectorized form, de-
+noted as zo
+K+1 ≜
+
+ℜ{vec(C)}T, ℑ{vec(C)}TT ∈R2(Lmax
+p )
+2
+.
+The resulting vector undergoes a linear layer transformation
+to achieve a dimensionality of d, denoted as z1
+K+1. Finally,
+these K pilot sequences and the received signal sequence,
+{z1
+k}K+1
+k=1 , are collectively fed into the subsequent heterogeneous
+Transformer for further feature extraction.
+In scenarios involving spatially correlated channels, directly
+mapping the covariance matrix onto a sequence may fail to
+effectively capture the antenna correlations. To address this limi-
+tation, we introduce a spatial correlation module (SCM) between
+the zero-padding and autocorrelation processes. Specifically, the
+received signal ˜Yp ∈CLmax×M is first transformed into a real
+tensor with dimensions Lmax × 2 × Mx × My and then inputted
+into the SCM. To prevent the network parameters from being
+dependent on the number of antennas, the SCM uses a fully con-
+volutional residual network to extract features along the vertical
+and horizontal antenna dimensions, as depicted in Fig. 2. The
+output of the SCM is reshaped to dimensions Lmax ×2×M for
+subsequent autocorrelation calculation. For Rayleigh channels
+with independent identical distribution (i.i.d.), this module can
+be omitted. Simulation results in Section VI demonstrate that
+incorporating the SCM significantly enhances the performance
+of AUD in correlated channels such as 3GPP channels [33].
+B. Heterogeneous Transformer and Activity Decoder
+Unlike the traditional Transformer, the heterogeneous Trans-
+former introduced in [6] employs distinct sets of weight matrices
+for input embedding, multi-head attention (MHA), and the
+multi-layer perceptron to account for the different physical
+meanings of pilot sequences and received signals. Since the
+relative positional order of different sequences is not meaningful
+in our AUD task, we do not apply positional encoding as in
+conventional Transformers.
+Assuming that the heterogeneous Transformer network con-
+sists of N encoder layers, we conduct activity estimation for
+K users based on the K + 1 sequences output by the N-
+d
+K+1
+d
+K+1
+d+1
+PLAM
+Inputs
+Outputs
+p
+L
+d
+Fig. 3: Block diagram of the proposed pilot length adaptive module.
+th encoder layer. This task is performed by the activity de-
+coder, which computes the heterogeneous MHA between the
+final output feature sequence of the received signal zN+1
+K+1 and
+pilot sequences {zN+1
+k
+}K
+k=1. The resulting MHA output, zc,
+represents the synthesized contributions of all pilot sequences
+to the received signal. Next, the user activity is estimated as the
+weighted correlation between zc and each pilot feature sequence
+given by:
+λ′
+k = C tanh
+ 
+zT
+c W ozN+1
+k
+√
+d
+!
+, λk =
+1
+1 + e−λ′
+k , ∀k.
+(8)
+Here, {λk}K
+k=1 is the output of the activity decoder, W o ∈
+Cd×d is a learnable parameter matrix, and C is a hyperparamter
+empirically set to C = 10. User activity is then determined by
+a binary threshold detector: ˆαk = I(λk > 0.5), ∀k, where the
+indicator I(x)=1 if x is true, and 0 otherwise.
+C. Pilot Length Adaptive Module
+In variable pilot-length transmission, the input sequence at
+the receiver undergoes zero-padding, causing some elements to
+carry no useful information. As a result, the significance of
+different elements in the input sequence varies. Allowing the
+neural network to recognize this variability enables adaptive
+optimization of network parameters based on the corresponding
+pilot lengths.
+Inspired by the attention feature module in [34], we propose
+a PLAM. By inserting a PLAM module between each pair of
+adjacent Transformer encoder layers, we provide additional pilot
+length information to the receiver. The structure of the proposed
+PLAM module is illustrated in Fig. 3. Its input consists of (K+1)
+sequences from the output of the previous Transformer encoder
+layer, and its output comprises (K+1) sequences of the same
+dimension, which serve as the input to the next layer. First, an
+average pooling operation is applied to the (K +1) sequences
+along the sequence length dimension, producing a sequence
+of length d. This d-dimensional sequence is then concatenated
+with the pilot length information Lp and processed through a
+two-layer fully connected network, generating a d-dimensional
+weight sequence. Finally, this weight sequence is used for
+position-wise dot multiplication with all input sequences, redis-
+tributing the weights of the input feature sequence and allowing
+the receiver to recognize the varying importance of different
+elements in the inputs.
+D. Loss Function
+We use binary cross-entropy as the loss function. The final
+loss is computed as the average of the loss values across
+
+
+===== PAGE 6 =====
+6
+different pilot lengths, given by:
+L =
+1
+|D|K
+|D|
+X
+i=1
+K
+X
+k=1
+
+α(i)
+k log λ(i)
+k
++
+
+1 −α(i)
+k
+ 
+1 −log λ(i)
+k
+ 
+.
+(9)
+Here, D denotes the dataset, which consists of training samples
+n
+Y (i)
+p
+, ˜P (i), α(i)o
+with different pilot lengths Lp, where Lp ∈
+
+Lmin
+p , Lmax
+p
+
+.
+V. GENERATIVE DIFFUSION MODELS DRIVEN JCEDD
+USING PREDICTOR-CORRECTOR SAMPLER
+Given the active UE set, we need to recover the channel
+and corresponding data symbols of the active UEs. Before
+introducing the proposed JCEDD schemes, we briefly review
+the relationship between existing generative models and their
+SDE descriptions. We then address the CE problem, detailing
+the calculation of posterior score functions within the predictor-
+corrector (PC) sampler framework. Subsequently, we extend
+the application of the PC sampler to the DD problem. Finally,
+we combine the CE and DD methods to propose an iterative
+algorithm for JCEDD and analyze its complexity.
+A. Preliminary: Diffusion Process and SDE
+Existing diffusion-based generative models involve corrupting
+data with multiple noise scales to form a known prior distribu-
+tion. These models then learn to transform this prior distribution
+back into the data distribution by gradually removing noise.
+SDE considers a continuum of distributions that evolve over
+time according to a diffusion process. The forward diffusion
+process x(t), indexed by the continuous time variable t∈(0, T],
+progressively diffuses a data point x0 ∈Rd sampled from a
+dataset with an unknown distribution p0(x) = pdata(x) into
+random noise x(T) with distribution pT (x) = N(x; 0, σ2
+T I).
+For simplicity in notation, we define pt(x) ≜p(x(t)). This
+process can be described by an SDE that has no trainable
+parameters [32], [35], as follows:
+dx = f(x, t)dt + g(t)dw,
+(10)
+where f(x, t) : Rd × R →Rd is a vector function called
+the drift coefficient, and the scalar function g(t) : R →R is
+the diffusion coefficient. Additionally, w is a standard Wiener
+process, defined as dw = z(t)dt, where z(t)∼N(z(t); 0, I).
+In the reverse process, starting from a sample xT ∼pT (x),
+random noise is smoothly transformed into a data sample x0 ∼
+p0(x). This reverse process satisfies a time-reversed SDE, which
+can be derived from the forward SDE given the score function
+∇x log pt(x) for the marginal probability of x as a function of
+time, i.e.,
+dx =
+f(x, t) −g(t)2∇x log pt(x)
+
+dt + g(t)d ¯w.
+(11)
+Here, pt(x) denotes the probability of x at time t, and ¯w de-
+notes the Wiener process when time flows backward from T to
+0. Existing generative models like SMLD [22] and DDPM [29]
+can be considered specific numerical discretization solvers of the
+SDE. For instance, in SMLD, the coefficients are f(x, t) = 0
+and g(t) =
+q
+d(σ2(t))
+dt
+, with σ(t) serving as a predefined
+noise scheduling function. For DDPM, the drift and diffusion
+coefficients are given by f(x, t) = −σ(t)x
+2
+and g(t) =
+p
+σ(t),
+respectively. By applying the discrete form of both the forward
+and reverse SDEs, we can derive the corresponding iteration
+equations used in SMLD and DDPM.
+B. Channel Estimation
+As discussed in [32], the generation process involves solving
+the reversed SDE given in Eq. (11), where the unconditional
+generation from this equation yields samples that adhere to
+the prior probability distribution p0(x). However, considering
+Eq. (5) in the JCEDD problem, since the BS receives signal
+Y , we need to consider the conditional generation process
+where channel should be drawn from the posterior distribution
+p
+
+Ha|Y , ˆ
+Xa, Pa
+
+to produce the CE result that align with the
+constraint Y =SaHa + W .
+Specifically, we assume that the data symbols ˆ
+Xa are known
+and represent the initial posterior distribution as p0 (Ha|Y ) ≜
+p (Ha(0)|Y ), where Ha(0) = Ha represents the ground truth
+channel to be estimated. The conditional distribution of Ha(t)
+at time t is expressed as pt (Ha|Y )≜p (Ha(t)|Y ). According
+to [36], the conditional generation process involves sampling
+from p0 (Ha|Y ), which is equivalent to solving a reverse SDE
+represented as follows:
+dHa =
+f(Ha, t) −g(t)2∇Ha log pt(Ha|Y )
+
+dt
++ g(t)d ¯
+W .
+(12)
+Due to the equivalence between DDPM and SMLD during the
+inference process [37], the remainder of this paper will examine
+the SDE in the SMLD form. Discussions on DDPM are similar
+and are therefore omitted.
+To solve the reversed SDE (12), it is essential to derive
+the posterior score function ∇Ha log pt (Ha|Y ). By applying
+Bayes’ theorem, the posterior score function is given by:
+∇Ha log pt (Ha|Y ) =∇Ha log pt (Y |Ha)
++ ∇Ha log pt (Ha) ,
+(13)
+where the likelihood score function ∇Ha log pt (Y |Ha) is deter-
+mined by the signal transmission model (5), and the prior score
+function ∇Ha log pt (Ha) is determined by the prior distribution
+of the channel dataset.
+1) Calculation of Prior Score Function:
+Denote hk ≜
+[Ha]T
+[k,:] ∈CM, ∀k∈A. Since the prior distributions of each ac-
+tive UE’s channel are assumed to be independent of each other,
+we have log pt (Ha) = log QKa
+k=1 pt(hk) = PKa
+k=1 log pt(hk).
+Therefore, the prior score function can be calculated for each
+UE separately, i.e.,
+∇Ha log pt (Ha) =
+h
+∇h1 log pt (h1) , ∇h2 log pt (h2) , · · · ,
+∇hKa log pt (hKa)
+iT
+.
+(14)
+Therefore, when all the UEs’ channels are generated from the
+same dataset distribution pdata(h), we only need to focus on the
+prior score function of a single UE.
+For simplicity, omit the UE index k and denote p0(h) ≜
+pdata(h).
+Our
+objective
+is
+to
+derive
+the
+score
+function
+
+
+===== PAGE 7 =====
+7
+∇h log pt (h), where pt (h) is the data distribution diffused by
+noise at time t. For complex channel distributions, the prior
+score function lacks a closed-form expression. Fortunately, the
+study [38] has shown that using a neural network to learn the
+score function ∇h log pt (h) is equivalent to denoising score
+matching (DSM). This can be achieved by training a time-
+dependent neural network sθ(h(t), t) using the following loss
+function:
+Ls =Et
+n
+λ(t)E
+nsθ(h(t), t)−∇h(t) log p(h(t)|h(0))
+2
+2
+oo
+,
+(15)
+where the inner expectation is taken over the joint distribution
+p(h(t), h(0)) with h(0) sampled from the dataset distribution
+p0(h), and the time t is uniformly sampled from (0, 1] with
+T =1, while λ(t)∝1/E[∥∇h(t) log p(h(t)|h(0))∥2
+2] is a positive
+weight function, and θ collects the neural network parameters.
+Specifically, p(h(t)|h(0)) denotes the transition kernel from
+h(0) to h(t), typically defined by a forward noise diffu-
+sion process given by Eq. (10). For a typical generation
+model in the SMLD form [32], with a known drift coefficient
+f(h, t) = 0 and a diffusion coefficient g(t) =
+q
+d(σ2(t))
+dt
+,
+the transition probability function from the original data point
+h(0) to h(t) can be derived using Ito’s Lemma [35]. This is
+given by p (h (t) |h (0)) = N
+h(t); h(0),
+σ2(t)−σ2(0)
+
+I
+
+≈
+N
+h(t); h(0), σ2(t)I
+
+, where σ(t)=σmin
+
+σmax
+σmin
+t
+is a prede-
+fined noise scheduling function, and the approximation holds
+when the initial noise variance σ2(0)=σmin ≈0. Consequently,
+we have ∇h(t) log p(h(t)|h(0)) = −h(t)−h(0)
+σ2(t)
+. The final loss
+function can thus be simplified as:
+Ls = Et
+(
+λ(t)E
+ sθ(h(t), t) + h(t) −h(0)
+σ2(t)
+
+2
+2
+!)
+,
+(16)
+which is equivalent to training a denoising neural network that
+can recover the scaled noise superposed on the channel. With
+sufficient data and model capacity, DSM ensures that the optimal
+solution sθ∗(h(t), t) approximates ∇h log pt(h) for almost all
+h(t) and t.
+Given the powerful expressive capability of the noise condi-
+tional score network (NCSN++) [32] in image generation tasks,
+and considering that the channel can be viewed as a special kind
+of image, we use NCSN++ to construct sθ∗(h(t), t). To adapt
+the channel dimension to the input of NCSN++, the original
+M-dimensional channel vector sample is transformed into a
+real representation and reshaped into dimensions 2×Mx ×My.
+NCSN++ then takes the channel of these dimensions and a time
+step index t as inputs. The network outputs the learned channel
+prior score at time t. It should be noted that during the prior
+score function learning, no information on the pilot symbols,
+data symbols, received signal, or transmission noise variance
+is involved in the training process. This means that once the
+neural network is trained, it can be applied to any dimension of
+the JCEDD problem as long as the channel distribution remains
+unchanged.
+2) Calculation of Likelihood Score Function:
+We now
+consider how to derive ∇Ha log pt (Y |Ha). Given that the
+channels are viewed as three-dimensional real tensors in
+prior score learning, we can also transform the transmission
+model (5) into its corresponding real-valued representation.
+For simplicity, we retain the notation Y
+= SaHa + W
+throughout this paper. Note that in the SMLD framework,
+p (Ha(t)|Ha(0)) ≈N
+Ha(t); Ha(0), σ2(t)I
+
+. Consequently,
+the transmission model can equivalently be expressed as:
+Y = Sa
+Ha(t) + σ(t)2Z
+
++ W ,
+(17)
+where Z ∼N (Z; 0, I) is the diffusion noise superimposed
+on the original channel Ha(0). Therefore, the corresponding
+transition probability is given by:
+pt (Y |Ha) ∼N
+Y ; SaHa(t), σ2
+nI + σ2(t)SaST
+a
+
+.
+(18)
+Taking the gradient of the log-likelihood, we obtain:
+∇Halog pt (Y |Ha)=ST
+a
+σ2
+nI+σ2(t)SaST
+a
+−1(Y−SaHa(t)).
+(19)
+In the considered JCEDD problem, Sa =
+h
+P T
+a , ˆ
+XT
+a
+iT
+contains
+both the pilot symbol Pa and estimated data symbol ˆ
+Xa in the
+iteration process, and the estimated data symbol can enhance
+the CE. When no data symbol is used, the problem degrades to
+the conventional pure pilot-aided CE problem.
+3) Channel Sampling Process: Utilizing the derived prior
+score function and likelihood score function, we numerically
+solve the reverse SDE (12). Specifically, by dividing the interval
+t∈(0, 1] into N discrete steps, indexed as i=0, 1, . . . , N −1,
+we obtain the following iterative rule for the reverse diffusion
+sampler (which is also called predictor):
+Hi
+a =Hi+1
+a
+−fi+1(Hi+1
+a
+)+g2
+i+1∇Hi+1
+a
+log p(Hi+1
+a
+|Y )
++ gi+1Z,
+(20)
+where Hi
+a = Ha(t)|t= i
+N , fi(Hi
+a) = f(Ha(t), t)|t= i
+N , gi =
+g(t)|t= i
+N , and Z ∼N(Z; 0, I). Given the known drift coef-
+ficient f(Ha, t) = 0 and diffusion coefficient g(t) =
+q
+d(σ2(t))
+dt
+in SMLD, Eq. (20) is equivalent to:
+˜
+Hi
+a =Hi+1
+a
++
+σ2
+i+1 −σ2
+i
+
+∇Hi+1
+a
+log p(Hi+1
+a
+|Y )
++
+q
+σ2
+i+1 −σ2
+i Z,
+(21)
+where σi = σ(t)|t= i
+N . Then, starting from a random initial-
+ization HN
+a ∼N(HN
+a ; 0, σ2
+maxI), the iteration process for the
+SMLD-based predictor is shown in Fig. 4. The corresponding
+discretized form of the score function is given as:
+∇Hialog p
+Hi
+a
+
+=
+h
+sθ∗
+
+hi
+1, i
+N
+
+, . . . , sθ∗
+
+hi
+Ka, i
+N
+iT
+, (22a)
+∇Hia log p
+Y |Hi
+a
+
+= V ΣT σ2
+nI + σ2
+i ΣΣT−1
+×
+U TY −ΣV THi
+a
+
+,
+(22b)
+∇Hia log p
+Hi
+a|Y
+
+= λh∇Hia log p
+Y |Hi
+a
+
++ ∇Hi
+a log p
+Hi
+a
+
+.
+(22c)
+
+
+1
+1
+log
+|
+i
+a
+i
+a
+p
+
+
+H
+Y H
+1
+i
+a
+
+H
+,
+a
+S Y
+
+
++1
++1
+log
+i
+a
+i
+a
+p
+H
+H
+
+
+;
+~
+0
+Z
+I
+Z
+,
+
+2
+2
+1
+i
+i
+
+
+
+2
+2
+1
+i
+i
+
+
+
+Posterior score function
+
+
+log
+|
+i
+a
+i
+a
+p
+H
+H
+Y
+
+
+
+
+1
+1
+log
+|
+i
+a
+i
+a
+p
+
+
+H
+H
+Y
+i
+a
+H
+i
+
+
+;
+~
+0
+Z
+I
+Z
+,
+
+2 i
+Posterior score function
+Predictor
+Corrector
+× M
+i
+a
+H
+,
+a
+S Y
+h
+
+N
+a
+H
+
+0
+a
+H
+
+Fig. 4: Block diagram of the proposed PC sampler-based CE algorithm.
+
+
+===== PAGE 8 =====
+8
+In Eq. (22b), we apply singular value decomposition (SVD) to
+Sa = UΣV T within Eq. (19) to avoid non-diagonal matrix
+inversions, thereby reducing computational complexity. Addi-
+tionally, a scaling parameter λh = 2.5, as suggested in [39], is
+empirically chosen to balance the effects of the likelihood score
+and prior score, enhancing convergence performance.
+However, the numerical predictor in Eq. (21) may introduce
+approximation errors when solving the continuous SDE in a
+discrete manner. To correct the errors, a score-based Markov
+Chain Monte Carlo (MCMC) method is used as the corrector.
+This method corrects the marginal distribution of the estimated
+sample during iterations. A well-known MCMC approach is the
+ALD, which employs the following iterative process:
+Hi
+a = ˜
+Hi
+a + ϵi∇˜
+Hia log p( ˜
+Hi
+a|Y ) +
+√
+2ϵiZ,
+(23)
+where ϵi =2σi
+r∥Z∥2/∥∇˜
+Hia log p( ˜
+Hi
+a|Y )∥2
+2 is the step size
+in the i-th iteration of the ALD algorithm [32]. Additionally, r
+is an empirically chosen hyperparameter, set to r = 0.3 in our
+simulations. Existing ALD-based studies on CE [21], DD [25],
+and JCEDD [27] can be regarded as corrector-only samplers
+with potential for performance improvement. Therefore, we
+address the JCEDD problem using the PC sampler illustrated
+in Fig. 4.
+4) Overall CE Algorithm: In practical implementations, each
+iteration of the PC sampler includes one prediction step and Q
+correction steps, where Q ranges from 1 to 3. The complete
+CE algorithm is listed as Algorithm 1. Compared to tradi-
+tional Bayesian algorithms, our method derives prior distribution
+knowledge through network learning, which avoids the mis-
+matches associated with manually specified prior distributions.
+Moreover, unlike purely data-driven or model-driven deep learn-
+ing algorithms based on supervised learning, this method does
+not require training separate networks for different numbers
+of active UEs and varying pilot lengths, offering improved
+generalization and interpretability.
+C. Data Detection
+Upon reviewing the formulas (2) and (5), the DD problem
+can be characterized as Yd =XaHa+Wd. By transposing the
+formula and representing the model in a real-valued form, the
+signal transmission model can be reformulated as:
+˚
+Yd = ˚
+Ha ˚
+Xa + ˚
+Wd,
+(24)
+where ˚
+Yd, ˚
+Ha, ˚
+Xa and ˚
+Wd are the transposed counterparts
+of the corresponding variables in real-valued form. Similar to
+the CE problem, assuming that the channel ˚
+Ha is known,
+data symbols can be sampled from the posterior distribution
+p( ˚
+Xa|˚
+Yd) by solving the SDE, which also involves calculating
+the prior score and the likelihood score of the data. Since the
+data symbols are uniformly sampled from a QAM constellation,
+the prior score ∇˚
+Xi
+a log p
+ ˚
+Xi
+a
+
+in the i-th iteration step can be
+calculated using Tweedie’s formula [40], i.e.,
+∇˚
+Xia log p( ˚
+Xi
+a) = E
+ ˚
+X0
+a| ˚
+Xi
+a
+	
+−˚
+Xi
+a
+τ 2
+i
+,
+(25)
+where τi = τ (t) |t= i
+N is the scheduled perturbation noise for
+data symbol, and τ(t)=τmin
+ τmax
+τmin
+t is a predefined scheduling
+Algorithm 1 PC Sampler-Based Channel Estimation
+Input: Sa, Y , σ2
+n, pre-trained denoising network sθ∗, step
+number N, noise scheduling function σ(t), and hyper-
+parameter λh;
+1: Initialize: HN
+a ∼N
+HN
+a ; 0, σ2
+NI
+
+;
+2: Compute: Sa = UΣV T;
+3: for i = N to 1 do
+4:
+Calculate ∇Hia log p
+Hi
+a|Y
+
+via (22);
+5:
+Draw Z ∼N(Z; 0, I);
+6:
+Hi−1
+a
+=
+Hi
+a +
+σ2
+i −σ2
+i−1
+
+∇Hia log p(Hi
+a|Y ) +
+q
+σ2
+i −σ2
+i−1Z;
+7:
+for j = 1 to Q do
+8:
+Draw Z ∼N(Z; 0, I);
+9:
+Calculate ∇Hi−1
+a
+log p
+Hi−1
+a
+|Y
+
+via (22);
+10:
+ϵi−1 = 2σi−1
+
+r∥Z∥2/∥∇Hi−1
+a
+log p(Hi−1
+a
+|Y )∥2
+2
+;
+11:
+Hi−1
+a
+=
+Hi−1
+a
++ ϵi−1∇Hi−1
+a
+log p(Hi−1
+a
+|Y ) +
+√2ϵi−1Z;
+12:
+end for
+13: end for
+Output: Estimated channel ˆ
+Ha = H0
+a.
+function. Additionally, the posterior distribution can be derived
+using Bayes’ rule as: p( ˚
+X0
+a| ˚
+Xi
+a) =
+p( ˚
+Xi
+a| ˚
+X0
+a)p( ˚
+X0
+a)
+P
+˚
+X0a∼X p( ˚
+Xia| ˚
+X0a)p( ˚
+X0a),
+where p( ˚
+X0
+a)=
+1
+|X|c . Then, the posterior mean is derived as
+E
+n
+˚
+X0
+a| ˚
+Xi
+a
+o
+=
+P
+˚
+X0a∼X ˚
+X0
+ap( ˚
+Xi
+a| ˚
+X0
+a)
+P
+˚
+X0a∼X p( ˚
+Xia| ˚
+X0a)
+.
+(26)
+By substituting (26) into (25), the final prior score the data
+symbols at time step i can be expressed as
+∇˚
+Xialog p( ˚
+Xi
+a)= 1
+τ 2
+i
+
+
+
+
+P
+˚
+X0a∼X ˚
+X0
+ae
+−
+∥˚
+Xi
+a−˚
+X0
+a∥2
+2τ2
+i
+P
+˚
+X0
+a∼X e
+−
+∥˚
+Xia−˚
+X0a∥2
+2τ2
+i
+−˚
+Xi
+a
+
+
+
+. (27)
+For the likelihood score, the equivalent likelihood function
+can be derived from the transmission model (24) as:
+∇˚
+Xia log p
+
+˚
+Yd| ˚
+Xi
+a
+
+=VhΣT
+h
+σ2
+nI2M + τ 2
+i ΣhΣT
+h
+−1
+×
+
+U T
+h ˚
+Yd −ΣhV T
+h ˚
+Xi
+a
+
+,
+(28)
+where we have used the SVD ˚
+Ha = UhΣhV T
+h to reduce the
+complexity during the iteration. Finally, the posterior score of
+the data symbols can be calculated as
+∇˚
+Xi
+a log p
+
+˚
+Xi
+a|˚
+Yd
+
+=λx∇˚
+Xi
+a log p
+
+˚
+Yd| ˚
+Xi
+a
+
++ ∇˚
+Xia log p( ˚
+Xi
+a),
+(29)
+where λx = 2.5 is an empirically chosen hyperparameter. The
+DD algorithm can also be derived based on PC-sampler. Due to
+space constraint, the detailed DD algorithm is omitted, but its
+basic iterative procedure is similar to that of Algorithm 1.
+
+
+===== PAGE 9 =====
+9
+*i
+a
+H
+* 1
+i
+a
+
+H
+H
+N
+a
+H
+
+0
+a
+H
+1
+j
+a
+
+X
+j
+a
+X
+X
+N
+a
+X
+
+0
+a
+X
+Reverse Diffusion of DD 
+1
+l
+a
+
+H
+PC 
+Sampler
+
+
+max
+;
+~
+X
+X
+N
+N
+a
+a
+
+0,
+I
+X
+X
+
+*
+LMMSE
+=
+i
+a
+a
+H
+H
+Bypass
+Iteration 
+Begin
+Iteration 
+End
+*
+update= 
+1
+N
+l
+i
+
+
+PC
+sampler
+...
+
+
+SVD
+*
+update
+/
+i
+N
+
+
+
+
+Reverse Diffusion of CE
+SVD
+
+Fig. 5: Block diagram of the proposed PC sampler-based JCEDD algorithm.
+D. Overall Algorithm
+In the CE and DD algorithms above, the data Xa is assumed
+to be known during CE, while the channel Ha is assumed to be
+known during DD. In practical transmission, only the pilot Pa
+and the received signals Y are known. Therefore, we design
+an iterative algorithm to perform JCEDD. The proposed PC
+sampler-based JCEDD method is depicted in Fig. 5, and the
+algorithmic framework is summarized as Algorithm 2.
+The issues we need to address are: 1) A typical SDE sampling
+algorithm starts by sampling from random noise, resulting in a
+high number of iterations. 2) In the existing ALD-based JCEDD
+[27], each CE iteration is followed by one DD iteration. Due
+to the different distributions of the channel and data symbols,
+their convergence speeds are inconsistent, causing the DD to
+fall into local optima before the completion of the CE iterations.
+We address these issues by the following improvements in the
+proposed sampling mechanism.
+• We conduct the LMMSE estimation [16] of the channel
+Ha using Yp =PaHa+Wp and determine the perturbation
+noise variance that matches the estimated channel variance
+as the starting point for SDE sampling. Let the estimated
+covariance matrix of the channel ha = vec
+HT
+a
+
+∈CKaM
+be R∆. Then the starting point i∗of the SDE iteration is
+obtained by identifying σi that is the closest to the average
+channel variance according to:
+i∗= arg min
+∀i
+σi −
+KaM
+X
+l=1
+[R∆]l,l
+.
+(30)
+By reshaping the estimated ˆha into matrix ˆ
+Ha, the initial
+DD result can be obtained by applying zero forcing (ZF)
+to (24), i.e., ˆ
+Xa =YdHH
+a
+HaHH
+a
+−1.
+• We design an asynchronous alternating iteration mecha-
+nism. For channel datasets with complex distributions, the
+calculation of posterior score is more complicated than DD
+that relies solely on model-based iterations with closed-
+form expression. We update the DD results after every
+Nupdate channel iterations (Line 6 in Algorithm 2). To
+ensure the optimal DD results under the current channel
+Algorithm 2 PC Sampler-Based JCEDD Algorithm
+Input: Sa, Y , σ2
+n, pre-trained denoising network sθ∗, SDE
+noise scheduling functions σ(t) and τ(t), step numbers NH
+and ND, hyper-parameters λh and λx;
+1: Initialize: Acquire initial CE ˆ
+Ha via LMMSE, initial DD
+ˆ
+Xa via ZF, and start point i∗via (30);
+2: Calculate: Sa =
+
+P T
+a , ˆ
+XT
+a
+T = UΣV T;
+3: for i = i∗to 1 do
+4:
+Calculate ∇Hia log p
+Hi
+a|Y
+
+via (22);
+5:
+Hi−1
+a
+= PC-sampler
+i, Hi
+a, ∇Hia log p
+Hi
+a|Y
+
+;
+6:
+if i%Nupdate == 0 then
+7:
+Calculate Hi−1
+a
+= UhΣhV T
+h ;
+8:
+Initialize ˚
+XNX
+a
+∼N
+
+˚
+XNX
+a
+; 0, τ 2
+maxI
+
+;
+9:
+for j = NX to 1 do
+10:
+Calculate ∇˚
+Xj
+a log p
+
+˚
+Xj
+a|˚
+Yd
+
+via (29);
+11:
+Xj−1
+a
+= PC-sampler
+
+j, Xj
+a, ∇˚
+Xj
+a log p
+
+˚
+Xj
+a|˚
+Yd
+
+;
+12:
+end for
+13:
+Calculate Sa =
+
+P T
+a ,
+X0
+a
+T T = UΣV T;
+14:
+end if
+15: end for
+Output: Estimated channel and data ˆ
+Ha =H0
+a and ˆ
+Xa =X0
+a.
+error, we conduct NX steps of PC sampler each time the
+data symbols are updated (Lines 9-12).
+E. Computational Complexity Analysis
+The complexity analysis of Algorithm 2 is detailed in Table
+I. The channel is initialized using the LMMSE method before
+the iterative process begins. For the channel PC-sampler, i⋆
+iterations are necessary. Each PC iteration consists of one
+predictor step and Q corrector steps, resulting in a total of
+i⋆(1+Q) computations of posterior scores, as described in Lines
+4-5 of Algorithm 2. Furthermore, data is updated after every
+Nupdate channel iterations, as outlined in Lines 6-14.
+During each data update, NX data iterations are conducted
+using another PC sampler. Each iteration includes one predictor
+step and Q corrector steps, leading to a total of
+
+i⋆
+Nupdate
+
+(1+
+Q)NX computations of posterior scores for data. Additionally,
+SVD is utilized to reduce computational complexity. Specifi-
+cally, 1+
+
+i⋆
+Nupdate
+
+SVD operations are performed for the channel
+in Lines 2 and 13, and
+
+i⋆
+Nupdate
+
+SVD operations are needed for
+the data in Line 7.
+Specifically, computational complexity of calculating each
+channel likelihood score function is O(L2M+K2
+aM), while the
+complexity of the channel prior score function is O(KaFnet),
+where Fnet represents the computational cost of one time in-
+ference of the score network sθ(h(t), t). The data likelihood
+TABLE I: Complexity of Algorithm 2
+Operation
+Lines
+Complexity/Each Time
+Number of Times
+Initialization
+Line 1
+O
+KaL2
+pM3 + LpK2
+aM3 + 2
+3 L3
+pM3 + 2KaM2L2
+p
+
+1
+SVD
+Channel
+Lines 2 and 13
+O
+2LK2
+a + K3
+a
+
+1 +
+
+i∗/Nupdate
+
+Data
+Line 7
+O
+2KaM2 + M3
+
+i∗/Nupdate
+
+Posterior Score
+Calculation
+Channel
+Lines 4-5
+O(L2M + K2
+aM + KaFnet)
+i∗(1 + Q)
+Data
+Lines 10-11
+O(M2Ld + K2
+aLd + 2KaLd|X|c)
+
+i∗/Nupdate
+
+(1 + Q)NX
+Overall Complexity
+Dominated by Lines 4-5 and Lines 10-11.
+
+
+===== PAGE 10 =====
+10
+score’s complexity is O(M 2Ld + K2
+aLd), and the data prior
+score’s complexity is O(2KaLd|X|c).
+For typical simulation parameters, e.g., Nupdate
+=
+50,
+
+i⋆
+Nupdate
+
+= 5 ∼15, Q = 3, NX = 1500 and NH = 1500,
+the algorithm’s overall complexity is mainly determined by the
+score function computations in Lines 4-5 and Lines 10-11. In
+subsequent simulations, the computational delay of the proposed
+algorithm will be compared with those of other baseline algo-
+rithms to verify its complexity efficacy.
+VI. NUMERICAL RESULTS
+In this section, we first detail the experimental setup, in-
+cluding simulation parameters, network configurations, channel
+datasets, training conditions, and comparative algorithms. We
+then assess the performance of the Transformer-based AUD as
+well as the generative diffusion models driven JCEDD.
+A. Experimental Setups
+We consider a typical uplink random access scenario with
+a total of K = 128 potential users, where each user’s activity
+follows a Bernoulli distribution with an active probability of
+0.1. The BS employs a UPA with Mx = My = 8 antennas
+on each dimension, while each user operates with a single
+antenna. Each element of the pilot sequence ˜pk, ∀k, and the data
+symbols xk are randomly sampled from 4QAM constellations.
+The maximum pilot sequence length is Lmax
+p
+=28. We consider a
+3GPP-compliant channel model [33] generated using Quadriga
+[41], simulating the 3GPP 38.901 UMa NLOS scenario at a
+carrier frequency of 3.5 GHz. The minimum pilot sequence
+length is Lmin
+p
+= 8 for Rayleigh channel, and Lmin
+p
+= 10 for
+3GPP channel, since 3GPP channel is more complicated and it
+needs more pilots to estimate AUS.
+1) VPL-AUDNet Setup: A total of 64,000 channel samples
+are generated using Quadriga. For each training batch, the pilot
+lengths for the UEs are randomly selected from [Lmin
+p , Lmax
+p
+]. In
+addition to the input preprocessing layer and output layer, the
+VPL-AUDNet contains 5 heterogeneous Transformer encoder
+layers, each featuring a hidden state sequence length of d=512
+and 8 attention heads. Training is conducted over 200 epochs,
+with the learning rate warming up to 10−4 during the initial 15
+epochs and then decaying to 0.1 of this original value every 75
+epochs. The batch size is set to 128.
+2) Channel Prior Score Network Setup: The NSCN++ ar-
+chitecture [32] is employed to model the prior score function
+sθ(h(t), t). A 3GPP training dataset consisting of 160,000 chan-
+nel samples is utilized. The time step t is uniformly sampled
+from the interval [0, 1], and the perturbation noise variance is
+determined using σ(t) = σmin
+
+σmax
+σmin
+t
+, with σmax = 30 and
+σmin =0.01. The network is trained with a learning rate of 10−5
+and a batch size of 64, over 20 epochs.
+During the testing phase, the reverse SDE process for CE
+is discretized into NH = 1, 500 steps. Given that an LMMSE
+initialization is employed, only i∗of the NH steps are executed.
+The reverse SDE process for DD is also discretized into NX =
+1, 500 steps, using a noise scheduling function defined as τ(t)=
+τmin
+ τmax
+τmin
+t, where τmax = 1 and τmin = 0.01. Additionally, the
+hyperparameters are set to λh =λx =2.5.
+3) Evaluation Metrics: We utilize activity error probability
+(AEP), normalized mean square error (NMSE) and bit error
+rate (BER) to evaluate the performance of AUD, CE and DD,
+respectively. These metrics are defined respectively as AEP =
+E
+ 1
+K
+PK
+k=1 |αk −ˆαk|
+	
+, NMSE = E
+ ∥Ha−ˆ
+Ha∥2
+∥Ha∥2
+	
+and BER =
+E
+
+Eb
+KaLd log2 |X|c
+	
+, where Eb denotes the total number of error
+bits for active UEs.
+4) Comparative Schemes: For AUD, the proposed method
+is compared with two baseline algorithms: AMP [9] and OMP
+[8]. Additionally, we also assess the performance of the VPL-
+AUDNet scheme trained with a fixed pilot length. For CE and
+DD, the following algorithms are included in the comparisons:
+• LS-CE & Perfect-Data: The data Xa is perfectly known,
+and jointly utilize pilots Pa and data Xa for LS CE;
+• Perfect-CSI & ZF-DD: The CSI Ha is perfectly known, and
+employ ZF for DD;
+• Perfect-CSI & OAMP-DD: The CSI Ha is perfectly known,
+and utilize OAMP [16] for DD;
+• Pilot LS-CE & ZF-DD: Utilize pilots to perform LS CE, and
+use the estimated channel for ZF DD;
+• Pilot LS-CE & OAMP-DD: Utilize pilots to perform LS CE,
+and use the estimated channel for OAMP [16] DD;
+• Iter LMMSE-CE & OAMP-DD: Employ LMMSE for CE
+and OAMP for DD, with CE and DD iteratively executed to
+enhance the performance of each other [16];
+• Iter Langevin CE & DD: Conduct iterative CE and DD using
+ALD [27];
+• SDE-CE & Perfect-Data: The data Xa is perfectly known,
+and apply SDE solver (i.e., PC sampler) for CE, which corre-
+sponds to Algorithm 1;
+• Perfect-CSI & SDE-DD: The CSI Ha is known, and apply
+SDE solver for DD;
+• Our Iter SDE CE & DD: The proposed Algorithm 2.
+B. Performance of AUD
+Fig. 6(a) illustrates the AUD performance of various schemes
+as the functions of the transmission pilot length, Ltest
+p , under i.i.d.
+Rayleigh channels, where the channel between each potential
+UE and the BS is modeled as hk ∼Nc(hk; 0, IM), ∀k. The
+simulation is conducted under the received SNR=
+E{∥SH∥2}
+E{∥W ∥2} =
+10 dB. The results indicate that that the VPL-AUDNet-based
+schemes outperform traditional CS algorithms based on AMP
+and OMP, in terms of AEP. Furthermore, the VPL-AUDNet
+models trained with fixed pilot lengths and without the PLAM
+module, e.g., VPL-AUDNet (w/o PLAM), Ltrain
+p
+= 15, exhibit
+degraded performance when tested on pilot lengths different
+8
+10
+12
+14
+16
+18
+20
+22
+24
+Lp
+test
+10-4
+10-3
+10-2
+10-1
+100
+AEP
+VPL-AUDNet (w/  PLAM), Lp
+train  [10, 28]
+VPL-AUDNet (w/o PLAM), Lp
+train  [10, 28]
+VPL-AUDNet (w/o PLAM), Lp
+train = 10
+VPL-AUDNet (w/o PLAM), Lp
+train = 15
+VPL-AUDNet (w/o PLAM), Lp
+train = 18
+AMP
+OMP
+(a) Rayleigh channel
+10
+12
+14
+16
+18
+20
+22
+24
+26
+28
+Lp
+test
+10-3
+10-2
+10-1
+AEP
+VPL-AUDNet (w/  PLAM, w/  SCM), Lp
+train  [10, 28]
+VPL-AUDNet (w/o  PLAM, w/ SCM), Lp
+train  [10, 28]
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train  [10, 28]
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train = 15
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train = 20
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train = 25
+AMP
+OMP
+(b) 3GPP channel
+Fig. 6: AEP performance with respect to the transmission pilot length of
+different AUD schemes.
+
+
+===== PAGE 11 =====
+11
+from the training pilot length. Conversely, VPL-AUDNet (w/o
+PLAM), Ltrain
+p
+∈[10, 28] exhibit better generalization perfor-
+mance. Moreover, the proposed VPL-AUDNet (w/ PLAM),
+Ltrain ∈[8, 24], outperforms VPL-AUDNet (w/o PLAM), Ltrain ∈
+[8, 24], demonstrating the effectiveness of the PLAM. Addi-
+tionally, under i.i.d. Rayleigh channels, the proposed VPL-
+AUDNet scheme achieves an AEP performance close to 10−2
+even when the pilot number is less than the average number
+of UEs (Ltest
+p
+≤12), whereas the AMP and OMP algorithms
+exhibit a AEP of 10−1. These results demonstrate that the
+proposed scheme achieves optimal overall performance across
+various pilot lengths within a single model, thereby confirming
+its effectiveness.
+Fig. 6(b) compares the AUD performance of various schemes
+as the functions of the number of transmission pilots Ltest
+p
+under
+3GPP channels, given a received SNR of 10 dB. The results
+show that the performance curves of the different schemes
+are similar to the trends observed under Rayleigh channels.
+Compared to traditional CS algorithms like AMP and OMP, the
+VPL-AUDNet-based scheme achieves better performance with
+significantly reduced pilot length by avoiding completely CE.
+Additionally, a comparison between the curves of VPL-AUDNet
+(w/o PLAM, w/ SCM), Ltrain
+p
+= [10, 28], and VPL-AUDNet
+(w/o PLAM, w/o SCM), Ltrain
+p
+=[10, 28], reveals that the SCM
+significantly enhances AEP performance under 3GPP channels.
+Moreover, VPL-AUDNet (w/ PLAM, w/ SCM), Ltrain
+p
+=[10, 28]
+scheme attains optimal performance at low pilot numbers.
+10-3
+10-2
+10-1
+Pmd
+10-5
+10-4
+10-3
+10-2
+10-1
+Pfa
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train = 25, M = 64
+VPL-AUDNet (w/o PLAM, w/o SCM), Lp
+train  [10, 28], M = 64
+VPL-AUDNet (w/o  PLAM, w/ SCM), Lp
+train  [10, 28], M = 64
+VPL-AUDNet (w/  PLAM, w/  SCM), Lp
+train  [10, 28], M = 64
+VPL-AUDNet (w/  PLAM, w/  SCM), Lp
+train  [10, 28], M = 144
+AMP, M = 64
+AMP, M = 144
+OMP, M = 64
+OMP, M = 144
+ M = 64
+ M = 144
+Fig. 7: Pfa-Pmd performance of different AUD schemes under 3GPP channel.
+Fig. 7 depicts the curves for the probability of false alarm
+(Pfa) and the probability of missed detection (Pmd) for various
+schemes under 3GPP channels. Simulations are conducted with
+a received SNR of 10 dB and a test pilot length of Ltest
+p
+= 25.
+All VPL-AUDNet models are trained with an antenna number
+of M = 64. The results indicate that the proposed VPL-
+AUDNet (w/ PLAM, w/ SCM), Ltrain
+p
+= [10, 28], achieves an
+optimal trade-off between Pfa and Pmd. Moreover, testing the
+model trained with M = 64 antennas on the channels with
+M = 144 antennas results in further improvements in Pfa-Pmd
+performance, demonstrating the scheme’s robust generalization
+capability across varying antenna configurations. In contrast, the
+performance gains for OMP related to an increased number of
+antennas are less significant.
+C. Performance of JCEDD
+In the simulations, unless otherwise specified, the BS is
+equipped with M =64 antennas, and a total of Ka =12 active
+UEs access the system simultaneously.
+0
+2
+4
+6
+8
+10
+12
+14
+16
+SNR
+-25
+-20
+-15
+-10
+-5
+0
+5
+NMSE
+LS-CE & Perfect-Data
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+Iter Langevin CE & DD
+SDE-CE & Perfect-Data
+Our Iter SDE CE & DD
+(a) NMSE
+0
+2
+4
+6
+8
+10
+12
+14
+16
+SNR
+10-7
+10-6
+10-5
+10-4
+10-3
+10-2
+10-1
+100
+BER
+Perfect-CSI & ZF-DD
+Perfect-CSI & OAMP-DD
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+Iter Langevin CE & DD
+Perfect-CSI & SDE-DD
+Our Iter SDE CE & DD
+(b) BER
+Fig. 8: NMSE and BER performance with respect to the received SNR for
+different CE and DD algorithms.
+Fig. 8 illustrates the performance curves of CE and DD under
+varying SNRs for different schemes. In the simulations, each
+user is allocated a pilot length of Lp = 15 and a data length
+of Ld = 50. As shown in Fig. 8(a), the iterative CE and DD
+schemes (i.e., Iter Langevin CE & DD, Iter LMMSE-CE
+& OAMP-DD, and Our Iter SDE CE & DD) achieve an
+NMSE gain of approximately 7 and 10 dB when compared
+to the non-iterative Pilot LS-CE & ZF-DD, and Pilot LS-
+CE & OAMP-DD schemes. This indicates a significant gain
+in CE performance by using detected data to refine CE. As
+SNR increases, Iter LMMSE-CE & OAMP-DD’s performance
+approaches that of LS-CE & Perfect-Data. Similarly, the
+performance of Our Iter SDE CE & DD (Algorithm 2) matches
+SDE-CE & Perfect-Data (Algorithm 1) for SNR ≥8 dB.
+When the data is not perfectly known, Our Iter SDE CE &
+DD outperforms Iter LMMSE-CE & OAMP-DD because it
+more effectively utilizes the prior distribution of the channel
+through a learned prior score function, whereas Iter LMMSE-
+CE & OAMP-DD relies only on the channel’s second-order
+statistical information via LMMSE. Additionally, Our Iter SDE
+CE & DD implements a PC sampler to enhance SDE solution
+performance beyond what Iter Langevin CE & DD algorithm
+can achieve with only a corrector.
+Fig. 8(b) compares the BER performance of various algo-
+rithms. Similar to Fig. 8(a), the non-iterative Pilot LS-CE &
+ZF-DD and Pilot LS-CE & OAMP-DD algorithms perform
+worse than the iterative algorithms. Our Iter SDE CE &
+DD scheme achieves performance close to that of Perfect-CSI
+& SDE-DD and surpasses the Iter LMMSE-CE & OAMP-
+DD and Iter Langevin CE & DD algorithms. At a BER of
+10−4, Our Iter SDE CE & DD offers a 3 dB SNR gain over
+Iter LMMSE-CE & OAMP-DD. Furthermore, Perfect-CSI &
+SDE-DD outperforms Perfect-CSI & OAMP-DD and Perfect-
+CSI & ZF-DD algorithms. This is likely because the channel
+matrix elements for the 3GPP scenario do not meet the i.i.d. dis-
+tribution assumptions for DD tasks, causing OAMP algorithms
+to underperform. On the other hand, the ZF algorithm does not
+exploit the prior distribution information of the constellation.
+In contrast, Perfect-CSI & SDE-DD thoroughly leverages the
+prior distribution of the data and the likelihood information of
+the received signals, resulting in superior performance.
+Fig. 9 compares the performance curves of CE and DD as
+the functions of pilot length Lp for different schemes. In the
+simulation, each user’s data length is Ld =50, and the received
+SNR at the BS is set to 10 dB. As shown in Fig. 9(a), when
+Lp >12, Our Iter SDE CE & DD can achieve the performance
+
+
+===== PAGE 12 =====
+12
+12
+14
+16
+18
+20
+22
+24
+26
+28
+Lp
+-20
+-15
+-10
+-5
+0
+5
+10
+NMSE
+LS-CE & Perfect-Data
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+SDE-CE & Perfect-Data
+Our Iter SDE CE & DD
+(a) NMSE
+12
+14
+16
+18
+20
+22
+24
+26
+28
+Lp
+10-4
+10-3
+10-2
+10-1
+BER
+Perfect-CSI & ZF-DD
+Perfect-CSI & OAMP-DD
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+Perfect-CSI & SDE-DD
+Our Iter SDE CE & DD
+(b) BER
+Fig. 9: NMSE and BER performance with respect to the pilot symbol length
+Lp for different CE and DD algorithms.
+of SDE-CE & Perfect-Data, whereas the LS algorithm, which
+relies solely on pilots, exhibits a notable performance gap
+relative to iterative CE and DD algorithms. This suggests that
+additional computation can potentially reduce communication
+pilot overhead. Also Iter LMMSE-CE & OAMP-DD and LS-
+CE & Perfect-Data exhibit similar performance, indicating that
+the estimated data is sufficiently robust to enhance CE. Fig. 9(b)
+shows that the BER performance of Our Iter SDE CE & DD
+is considerably better than that of Perfect-CSI & OAMP-DD,
+which relies on the perfect CSI. As expected, Perfect-CSI &
+SDE-DD attains the best performance.
+10
+20
+30
+40
+50
+60
+70
+Ld
+-20
+-18
+-16
+-14
+-12
+-10
+-8
+-6
+NMSE
+LS-CE & Perfect-Data
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+SDE-CE & Perfect-Data
+Our Iter SDE CE & DD
+(a) NMSE
+10
+20
+30
+40
+50
+60
+70
+Ld
+10-4
+10-3
+10-2
+10-1
+BER
+Perfect-CSI & ZF-DD
+Perfect-CSI & OAMP-DD
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+Perfect-CSI & SDE-DD
+Our Iter SDE CE & DD
+(b) BER
+Fig. 10: NMSE and BER performance with respect to the data symbol length
+Ld for different CE and DD algorithms.
+Fig. 10 depicts the performance curves of CE and DD across
+various schemes as the functions of data length Ld. In the
+simulation, the pilot length for each UE is fixed at Lp = 15,
+with the received SNR=10 dB at the BS. As can be seen from
+Fig. 10(a), the iterative algorithm improves CE performance as
+data length increases. For Ld ≥30, the NMSE of Our Iter
+SDE CE & DD matches that of SDE-CE & Perfect-Data,
+offering an NMSE gain of 1 to 2 dB over Iter LMMSE-CE &
+OAMP-DD. As depicted in Fig. 10(b), increasing Ld improves
+the accuracy of CE, thereby enhancing the BER performance
+of Iter LMMSE-CE & OAMP-DD and Our Iter SDE CE &
+DD. Moreover, when Ld = 70, the BER of Iter LMMSE-CE
+& OAMP-DD approximates that of Perfect-CSI & OAMP-
+DD, while Our Iter SDE CE & DD surpasses Perfect-CSI &
+OAMP-DD, in terms of BER.
+Fig. 11 compares the performance of CE and DD of Our
+Iter SDE CE & DD scheme as the function of the algorithm
+iteration numbers NH and NX. In the simulation, each UE’s
+pilot length is set to Lp = 15 and the data length is Ld = 50,
+with the received SNR fixed at 10 dB. For the predefined noise
+diffusion functions σ(t) and τ(t), the interval t ∈[0, 1] can
+be divided into segments with different values of NX and
+NH to control the noise variance gap between adjacent steps,
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+1800
+2000
+ NH
+-19
+-18
+-17
+-16
+-15
+-14
+-13
+NMSE (dB)
+Our Iter SDE CE & DD, ND = 200
+Our Iter SDE CE & DD, ND = 500
+Our Iter SDE CE & DD, ND = 1000
+Our Iter SDE CE & DD, ND = 1500
+Our Iter SDE CE & DD, ND = 2000
+SDE-CE & Perfect-Data
+(a) NMSE
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+1800
+2000
+ ND
+10-4
+10-3
+10-2
+BER
+Our Iter SDE CE & DD, NH = 200
+Our Iter SDE CE & DD, NH = 500
+Our Iter SDE CE & DD, NH = 1000
+Our Iter SDE CE & DD, NH = 1500
+Our Iter SDE CE & DD, NH = 2000
+Perfect-CSI & SDE-DD
+(b) BER
+Fig. 11: NMSE and BER performance with respect to the step numbers NH
+and NX of our Iter SDE CE & DD algorithm.
+thereby balancing generation speed and performance. As shown
+in Fig. 11(a), as the channel sampling steps NH increase,
+the NMSE performance improves gradually due to a more
+elaborate denoising process, resulting in more accurate SDE
+solutions. When NH = 1000, the NMSE of Our Iter SDE
+CE & DD approximates that of SDE-CE & Perfect-Data.
+Moreover, under the same NH, CE performance remains similar
+for different ND, possibly due to SDE-based CE not being
+sensitive to DD errors. Additionally, Fig. 11(b) shows that as the
+data sampling steps ND increase, the BER performance of DD
+gradually improves. However, the BER curves vary for different
+NH, indicating that for DD problems, SDE-based DD methods
+are more sensitive to CE errors.
+Perfect-CSI & ZF-DD
+Perfect-CSI & OAMP-DD
+LS-CE & Perfect-Data
+Pilot LS-CE & ZF-DD
+Pilot LS-CE & OAMP-DD
+Iter LMMSE-CE & OAMP-DD
+Iter Langevin CE & DD
+Perfect-CSI & SDE-DD
+SDE-CE & Perfect-Data
+Our Iter SDE CE & DD
+10-1
+100
+101
+102
+103
+104
+Latency [s]
+Fig. 12: Computation latency of different CE and DD schemes.
+Fig. 12 compares the computational latency of various meth-
+ods for processing a batch size of 64 in CE and DD tasks,
+utilizing a NVIDIA GeForce GTX 4090 GPU and an AMD
+EPYC 7J13 CPU. Due to its asynchronous update mechanism
+and LMMSE initialization, Our Iter SDE CE & DD algorithm
+demonstrates significantly lower computational latency com-
+pared to Iter Langevin CE & DD algorithm. Furthermore, the
+latency of Our Iter SDE CE & DD is comparable to that of Iter
+LMMSE-CE & OAMP-DD, while the previous simulations
+have shown it outperforming Iter LMMSE-CE & OAMP-
+DD in both CE and DD. Although the latency of iterative CE
+and DD algorithms is higher than that of two-stage algorithms,
+such as Pilot LS-CE & ZF-DD and Pilot LS-CE & OAMP-
+DD, existing researches indicate that diffusion-based algorithms
+can reduce the number of steps from thousands to tens, or
+even to as few as 1 to 2 steps, through acceleration methods
+such as higher-order Langevin algorithms [26] and consistency
+models [42]. Therefore, accelerating diffusion algorithms still
+holds significant potential for addressing CE and DD problems.
+
+
+===== PAGE 13 =====
+13
+VII. CONCLUSIONS
+We have proposed techniques for addressing the challenges
+of AUD and JCEDD in massive random access, where stan-
+dard deep learning often struggles to generalize across various
+problem dimensions using a single model. Our VPL-AUDNet
+architecture has been designed for variable pilot length trans-
+mission, enabling a single model to adapt to different pilot
+lengths and antennas, thereby achieving superior AUD perfor-
+mance in both 3GPP and Rayleigh channels. Furthermore, we
+have introduced a generative diffusion models-driven JCEDD
+scheme using PC samplers, which significantly enhances CE and
+DD performance through an asynchronous iterative algorithm.
+These proposed schemes have demonstrated the potential of
+utilizing deep learning and generative models to address signal
+detection and estimation challenges in massive random access.
+A future research direction of interest is to consider accelerating
+generative model methods to further reduce inference latency.
+REFERENCES
+[1] Z. Gao, et al., “Compressive-sensing-based grant-free massive access for
+6G massive communication,” IEEE Internet Things J., vol. 11, no. 5,
+pp. 7411–7435, Mar. 2024.
+[2] ITU-R WP 5D, “The ITU-R Framework for IMT-2030,” July 2023.
+[3] X. Shao, et al., “Cooperative activity detection: Sourced and unsourced
+massive random access paradigms,” IEEE Trans. Signal Process., vol. 68,
+pp. 6578–6593, Dec. 2020.
+[4] Z. Chen, F. Sohrabi, and W. Yu, “Sparse activity detection in multi-cell
+massive MIMO exploiting channel large-scale fading,” IEEE Trans. Signal
+Process., vol. 69, pp. 3768–3781, Jul. 2021.
+[5] W. Jiang, Y. Jia, and Y. Cui, “Statistical device activity detection for
+OFDM-based massive grant-free access,” IEEE Trans. Wireless Commun.,
+vol. 22, no. 6, pp. 3805–3820, Jun. 2023.
+[6] Y. Li, et al., “Heterogeneous transformer: A scale adaptable neural network
+architecture for device activity detection,” IEEE Trans. Wireless Commun.,
+vol. 22, no. 5, pp. 3432–3446, May 2023.
+[7] Z. Sheng, P. Zhu, and X. You, “UADFormer: A transformer-based deep
+learning method for user activity detection in cell-free massive MIMO
+systems,” IEEE Trans. Wireless Commun., vol. 23, no. 12, pp. 18516–
+18531, Dec. 2024.
+[8] L. Qiao, et al., “Compressive sensing based massive access for IoT relying
+on media modulation aided machine type communication,” IEEE Trans.
+Veh. Technol., vol. 69, no. 9, pp. 10391–10396, Sep. 2020.
+[9] M. Ke, et al., “Compressive sensing-based adaptive active user detection
+and channel estimation: Massive access meets massive MIMO,” IEEE
+Trans. Signal Process., vol. 68, pp. 764–779, Feb. 2020.
+[10] K. Ying, et al., “Quasi-synchronous random access for massive MIMO-
+based LEO satellite constellations,” IEEE J. Sel. Areas Commun., vol. 41,
+no. 6, pp. 1702–1722, Jun. 2023.
+[11] Y. Cui, S. Li, and W. Zhang, “Jointly sparse signal recovery and support
+recovery via deep learning with applications in MIMO-based grant-free
+random access,” IEEE J. Sel. Areas Commun., vol. 39, no. 3, pp. 788–803,
+Mar. 2021.
+[12] X. Shao, et al., “Feature-aided adaptive-tuning deep learning for massive
+device detection,” IEEE J. Sel. Areas Commun., vol. 39, no. 7, pp. 1899–
+1914, Jul. 2021.
+[13] J. Ma and L. Ping, “Orthogonal AMP,” IEEE Access, vol. 5, pp. 2020–
+2033, Mar. 2017.
+[14] J. Céspedes, P. M. Olmos, M. Sánchez-Fernández, and F. Perez-
+Cruz, “Expectation propagation detection for high-order high-dimensional
+MIMO systems,” IEEE Trans. Commun., vol. 62, no. 8, pp. 2840–2849,
+Aug. 2014.
+[15] K. Pratik, B. D. Rao, and M. Welling, “RE-MIMO: Recurrent and
+permutation equivariant neural MIMO detection,” IEEE Trans. Signal
+Process., vol. 69, pp. 459–473, Jan. 2021.
+[16] H. He, C.-K. Wen, S. Jin, and G. Y. Li, “Model-driven deep learning for
+MIMO detection,” IEEE Trans. Signal Process., vol. 68, pp. 1702–1715,
+Mar. 2020.
+[17] A. Kosasih, et al., “Graph neural network aided expectation propagation
+detector for MU-MIMO systems,” IEEE J. Sel. Areas Commun., vol. 40,
+no. 9, pp. 2540–2555, Sep. 2022.
+[18] H. He, et al., “Message passing meets graph neural networks: A new
+paradigm for massive MIMO systems,” IEEE Trans. Wireless Commun.,
+vol. 23, no. 5, pp. 4709–4723, May 2024.
+[19] S. Zhang, Y. Cui, and W. Chen, “Joint device activity detection, channel es-
+timation and signal detection for massive grant-free access via BiGAMP,”
+IEEE Trans. Signal Process., vol. 71, pp. 1200–1215, Apr. 2023.
+[20] M. Ke, et al., “Next-generation URLLC with massive devices: A uni-
+fied semi-blind detection framework for sourced and unsourced random
+access,” IEEE J. Sel. Areas Commun., vol. 41, no. 7, pp. 2223–2244,
+Jul. 2023.
+[21] M. Arvinte and J. I. Tamir, “MIMO channel estimation using score-
+based generative models,” IEEE Trans. Wireless Commun., vol. 22, no. 6,
+pp. 3698–3713, Jun. 2023.
+[22] Y. Song and S. Ermon, “Generative modeling by estimating gradients
+of the data distribution,” in
+Adv. Neural Inf. Process. Syst., Vancouver,
+Canada, Dec. 8-14, 2019, pp. 11918–11930.
+[23] Y. Song and S. Ermon, “Improved techniques for training score-based
+generative models,” in Adv. Neural Inf. Process. Syst., Dec. 6-12, 2020,
+pp. 12438–12448.
+[24] L. He, Z. Wang, and Y. Huang, “A massive MIMO sampling detection
+strategy based on denoising diffusion model,” in
+IEEE Int. Wireless
+Commun. Mobile Comput. (IWCMC), Ayia Napa, Cyprus, May 27-31,
+2024, pp. 1443–1448.
+[25] N. Zilberstein, et al., “Annealed Langevin dynamics for massive MIMO
+detection,” IEEE Trans. Wireless Commun., vol. 22, no. 6, pp. 3762–3776,
+Jun. 2023.
+[26] N. Zilberstein, A. Sabharwal, and S. Segarra, “Solving linear inverse
+problems using higher-order annealed Langevin diffusion,” IEEE Trans.
+Signal Process., vol. 72, pp. 492–505, Jan. 2024.
+[27] N. Zilberstein, A. Swami, and S. Segarra, “Joint channel estimation and
+data detection in massive MIMO systems based on diffusion models,” in
+IEEE Int. Conf. Acoust., Speech Signal Process. (ICASSP), Seoul, South
+Korea, Apr. 14-19, 2024, pp. 13291–13295.
+[28] X. Zhou, et al., “Generative diffusion models for high dimensional channel
+estimation,” IEEE Trans. Wireless Commun. (Early Access), Mar. 2025.
+DOI:10.1109/TWC.2025.3549592
+[29] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,”
+in Adv. Neural Inf. Process. Syst., Dec. 6-12, 2020, pp. 6840–6851.
+[30] B. Fesl, et al., “Diffusion-based generative prior for low-complexity
+MIMO channel estimation,” IEEE Wireless Commun. Lett., vol. 13, no. 12,
+pp. 3493–3497, Dec. 2024.
+[31] T. Wu, et al., “CDDM: Channel denoising diffusion models for wireless
+semantic communications,” IEEE Trans. Wireless Commun., vol. 23, no. 9,
+pp. 11168–11183, Sep. 2024.
+[32] Y. Song, et al., “Score-based generative modeling through stochastic
+differential equations,” in
+Int. Conf. Learn. Represent., May 3-7, 2021,
+pp. 1–36.
+[33] 3GPP, “Study on channel model for frequencies from 0.5 to 100 GHz,”
+3rd Generation Partnership Project (3GPP), Technical Report (TR) 38.901,
+05 2017, version 14.0.0.
+[34] J. Xu, et al., “Wireless image transmission using deep source channel
+coding with attention modules,” IEEE Trans. Circuits Syst. Video Technol.,
+vol. 32, no. 4, pp. 2315–2328, Apr. 2022.
+[35] S. H. Chan, “Tutorial on diffusion models for imaging and vision,”
+Jan. 2025. [Online] Available: https://arxiv.org/abs/2403.18103.
+[36] B. D. O. Anderson, “Reverse-time diffusion equation models,” Stochastic
+Processes and their Applications, vol. 12, no. 3, pp. 313–326, May 1982.
+[37] B. Kawar, M. Elad, S. Ermon, and J. Song, “Denoising diffusion restora-
+tion models,” in Adv. Neural Inf. Process. Syst., Nov. 28-Dec. 9, 2022,
+pp. 23593–23606.
+[38] P. Vincent, “A connection between score matching and denoising autoen-
+coders,” Neural Comput., vol. 23, no. 7, pp. 1661–1674, Jul. 2011.
+[39] X. Meng and Y. Kabashima, “Quantized compressed sensing with score-
+based generative models,” in Int. Conf. Learn. Represent., Kigali, Rwanda,
+May 1-5, 2023, pp. 1-30.
+[40] B. Efron, “Tweedie’s formula and selection bias,” J. Am. Stat. Assoc.,
+vol. 106, no. 496, pp. 1602–1614, Jan. 2011.
+[41] S. Jaeckel, et al., “QuaDRiGa-quasi deterministic radio channel generator,
+user manual and documentation,” Heinrich Hertz Institute, Tech. Rep.
+v2.6.1, 2021.
+[42] Y. Song, P. Dhariwal, M. Chen, and I. Sutskever, “Consistency models,”
+in Int. Conf. Mach. Learn., Honolulu, HI, USA, Jul. 23-29, 2023, 2023,
+pp. 32211–32252.
