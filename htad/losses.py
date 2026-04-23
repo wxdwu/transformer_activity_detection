@@ -11,10 +11,7 @@ def weighted_activity_loss(
 ) -> torch.Tensor:
     # Paper Eq. (4): weighted BCE (active class gets larger weight under sparse activity)
     n = targets.shape[1]
-    # Use mini-batch active ratio as K/N in Eq. (4), with fallback to configured prior.
-    k_over_n = float(targets.mean().detach().clamp(1e-4, 1.0 - 1e-4).item())
-    if not (0.0 < k_over_n < 1.0):
-        k_over_n = activity_prob
+    k_over_n = float(activity_prob)
     pos_w = 1.0 - k_over_n
     neg_w = k_over_n
 

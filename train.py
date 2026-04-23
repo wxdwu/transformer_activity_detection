@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train heterogeneous transformer for device activity detection.")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--save_dir", type=str, default="checkpoints")
+    parser.add_argument("--log_file", type=str, default="", help="Optional path to append per-epoch summary logs.")
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--num_devices", type=int, default=100)
@@ -31,11 +32,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ff_dim", type=int, default=512)
     parser.add_argument("--score_scale", type=float, default=10.0)
 
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--steps_per_epoch", type=int, default=200)
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--steps_per_epoch", type=int, default=5000)
+    parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--lr_decay_epochs", type=str, default="18")
+    parser.add_argument("--lr_decay_epochs", type=str, default="90,97")
     parser.add_argument("--lr_decay_factor", type=float, default=0.1)
 
     parser.add_argument("--eval_batches", type=int, default=20)
@@ -72,6 +73,9 @@ def main() -> None:
     decay_set = {int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip()}
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
+    log_path = Path(args.log_file) if args.log_file else None
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
 
     best_pm = float("inf")
     for epoch in range(1, args.epochs + 1):
@@ -113,10 +117,14 @@ def main() -> None:
         pm, pf = pm_pf_at_threshold(eval_probs_t, eval_labels_t, args.eval_threshold)
         avg_loss = running_loss / float(args.steps_per_epoch)
         lr_now = optimizer.param_groups[0]["lr"]
-        print(
+        summary = (
             f"Epoch {epoch:03d} | loss={avg_loss:.6f} | PM@{args.eval_threshold:.2f}={pm:.6f} | "
             f"PF@{args.eval_threshold:.2f}={pf:.6f} | lr={lr_now:.2e}"
         )
+        print(summary)
+        if log_path is not None:
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(summary + "\n")
 
         ckpt = {
             "model_state": model.state_dict(),

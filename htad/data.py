@@ -48,13 +48,13 @@ class ActivityDataGenerator:
         return torch.cat([x.real, x.imag], dim=-1)
 
     @staticmethod
-    def _rms_normalize(x: torch.Tensor, eps: float = 1e-20) -> torch.Tensor:
+    def _rms_normalize(x: torch.Tensor, eps: float = 1e-24) -> torch.Tensor:
         # Per-sample RMS normalization for numerical stability.
         dims = tuple(range(1, x.dim()))
         scale = torch.sqrt(torch.mean(x * x, dim=dims, keepdim=True) + eps)
         return x / scale
 
-    def sample_batch(self, batch_size: int) -> dict[str, torch.Tensor]:
+    def sample_batch(self, batch_size: int, return_raw: bool = False) -> dict[str, torch.Tensor]:
         cfg = self.cfg
         bsz, n, lp, m = batch_size, cfg.num_devices, cfg.pilot_len, cfg.num_antennas
 
@@ -67,6 +67,7 @@ class ActivityDataGenerator:
         pmax_w = 10.0 ** ((cfg.pmax_dbm - 30.0) / 10.0)
         p = pmax_w * (g_min / g.clamp_min(1e-16))
         scale = torch.sqrt((p * g).clamp_min(1e-20))
+        pg = p * g
 
         # Scaled pilot matrix B = S G^{1/2}
         b = s * scale.unsqueeze(1)
@@ -95,8 +96,21 @@ class ActivityDataGenerator:
         x_b = self._rms_normalize(x_b.to(torch.float32))
         x_y = self._rms_normalize(x_y.to(torch.float32))
 
-        return {
+        out = {
             "x_b": x_b,  # [B, N, 2Lp]
             "x_y": x_y,  # [B, 2Lp^2]
             "label": a,  # [B, N]
         }
+        if return_raw:
+            out.update(
+                {
+                    "y": y,  # [B, Lp, M], complex
+                    "b": b,  # [B, Lp, N], complex
+                    "s": s,  # [B, Lp, N], complex (unscaled pilots)
+                    "pg": pg,  # [B, N], equivalent large-scale power factor
+                    "beta": g,  # [B, N], large-scale fading gain
+                    "h": h,  # [B, N, M], complex (ground-truth)
+                    "noise_var": torch.tensor(noise_var, device=self.device, dtype=torch.float32),
+                }
+            )
+        return out
