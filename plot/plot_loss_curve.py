@@ -4,8 +4,6 @@ import argparse
 import re
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 
 def parse_log(log_path: Path) -> tuple[list[int], list[float]]:
     pattern = re.compile(r"Epoch\s+(\d+)\s+\|\s+loss=([0-9]*\.?[0-9]+)")
@@ -42,6 +40,8 @@ def main() -> None:
 
     epochs, losses = parse_log(log_path)
 
+    import matplotlib.pyplot as plt
+
     plt.figure(figsize=(7, 4.5))
     plt.semilogy(epochs, losses, linewidth=2.0, label=args.label)
     plt.xlabel("Training epoch")
@@ -56,4 +56,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

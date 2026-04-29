@@ -1,43 +1,41 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import torch
 
-from htad.data import ActivityDataGenerator, SystemConfig
-from htad.estimators import active_indices_from_probs
-from htad.model import HeterogeneousTransformer
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from CE_methods.estimators import active_indices_from_probs
+from network.config import apply_cli_overrides, load_experiment_config, section_namespace
+from network.data import ActivityDataGenerator, SystemConfig
+from network.model import build_model_from_config
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Compare oracle active indices vs model-predicted active indices.")
-    p.add_argument("--ckpt", type=str, default="checkpoints_lp16_gpu/last.pt")
-    p.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    p.add_argument("--num_samples", type=int, default=10)
-    p.add_argument("--threshold", type=float, default=0.5)
-    p.add_argument("--topk", type=int, default=0, help="If >0, use top-k predicted users instead of threshold.")
+    p.add_argument("--config", type=str, default="config.json", help="Experiment config JSON path.")
+    p.add_argument("--ckpt", type=str, default=None)
+    p.add_argument("--device", type=str, default=None)
+    p.add_argument("--num_samples", type=int, default=None)
+    p.add_argument("--threshold", type=float, default=None)
+    p.add_argument("--topk", type=int, default=None, help="If >0, use top-k predicted users instead of threshold.")
     p.add_argument(
         "--out_txt",
         type=str,
-        default="checkpoints_lp16_gpu/index_diff_report_10samples.txt",
+        default=None,
         help="Output text report path.",
     )
     return p.parse_args()
 
 
-def build_model_from_ckpt(ckpt: dict, device: torch.device) -> HeterogeneousTransformer:
-    cfg = ckpt["config"]
-    model = HeterogeneousTransformer(
-        num_devices=cfg["num_devices"],
-        pilot_len=cfg["pilot_len"],
-        dim=cfg["dim"],
-        num_layers=cfg["num_layers"],
-        num_heads=cfg["num_heads"],
-        head_dim=cfg["head_dim"],
-        ff_dim=cfg["ff_dim"],
-        score_scale=cfg["score_scale"],
-    ).to(device)
+def build_model_from_ckpt(ckpt: dict, device: torch.device) -> torch.nn.Module:
+    cfg = ckpt.get("model_config", ckpt["config"])
+    model = build_model_from_config(cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     return model
@@ -45,7 +43,11 @@ def build_model_from_ckpt(ckpt: dict, device: torch.device) -> HeterogeneousTran
 
 @torch.no_grad()
 def main() -> None:
-    args = parse_args()
+    cli = parse_args()
+    exp_cfg = load_experiment_config(cli.config)
+    section = "network_compare_active_indices" if "network_compare_active_indices" in exp_cfg else "compare_active_indices"
+    args = section_namespace(exp_cfg, section)
+    apply_cli_overrides(args, cli, ["ckpt", "device", "num_samples", "threshold", "topk", "out_txt"])
     device = torch.device(args.device)
     ckpt_path = Path(args.ckpt)
     if not ckpt_path.exists():

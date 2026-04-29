@@ -1,3 +1,4 @@
+
 # Heterogeneous Transformer for Activity Detection
 
 This repo reproduces the core part of:
@@ -11,15 +12,18 @@ Scope of this version:
 
 ## Files
 
-- `htad/data.py`: system model based synthetic data generation (`Y, B, a`) and feature construction.
-- `htad/model.py`: heterogeneous transformer:
+- `network/data.py`: system model based synthetic data generation (`Y, B, a`) and feature construction.
+- `network/model.py`: heterogeneous transformer:
   - initial embedding layer
   - heterogeneous encoder layers
   - context decoder
-- `htad/losses.py`: weighted cross-entropy style loss (paper Eq. (4)).
-- `htad/metrics.py`: `PM/PF` metrics and threshold curve.
-- `train.py`: training script.
-- `evaluate.py`: evaluate `PM-PF` curve and export CSV.
+- `network/losses.py`: weighted cross-entropy style loss (paper Eq. (4)).
+- `network/metrics.py`: `PM/PF` metrics and threshold curve.
+- `network/train.py`: training script.
+- `network/evaluate.py`: evaluate `PM-PF` curve and export CSV.
+- `CE_methods/estimators.py`: activity-index conversion plus CAMP and LMMSE channel-estimation methods.
+- `CE_methods/compare.py`: run trained detector, call estimators, and write PM/PF/NMSE report.
+- `plot/`: plotting scripts.
 
 ## Paper-to-Code Mapping
 
@@ -38,38 +42,30 @@ Install:
 pip install -r requirements.txt
 ```
 
-Train (lightweight smoke run):
+Edit experiment settings in `config.json`, then run training with:
 
 ```bash
-python train.py --epochs 2 --steps_per_epoch 10 --batch_size 16
+python network/train.py
 ```
 
-Train (closer to paper architecture defaults):
+The shared config controls the system parameters, model shape, training loop, and evaluation/detection defaults:
+
+- `network_train`: settings used by `network/train.py`, including nested `system` and `model`.
+- `network_evaluate`: settings used by `network/evaluate.py`.
+- `CE_methods_compare`: settings used by `CE_methods/compare.py`.
+- `network_compare_active_indices`: settings used by `network/compare_active_indices.py`.
+- `plot_plot_amp_nmse_vs_iter`: settings used by `plot/plot_amp_nmse_vs_iter.py`.
+
+Command-line arguments are still available for temporary overrides, for example:
 
 ```bash
-python train.py \
-  --num_devices 100 \
-  --num_antennas 32 \
-  --pilot_len 8 \
-  --activity_prob 0.1 \
-  --dim 128 \
-  --num_layers 5 \
-  --num_heads 8 \
-  --head_dim 32 \
-  --ff_dim 512 \
-  --score_scale 10 \
-  --epochs 100 \
-  --steps_per_epoch 5000 \
-  --batch_size 256 \
-  --lr 1e-4 \
-  --lr_decay_epochs 90,97 \
-  --lr_decay_factor 0.1
+python network/train.py --epochs 2 --steps_per_epoch 10 --batch_size 16
 ```
 
 Evaluate PM/PF curve:
 
 ```bash
-python evaluate.py --ckpt checkpoints/last.pt --num_test_batches 100 --batch_size 128
+python network/evaluate.py
 ```
 
 Output file:

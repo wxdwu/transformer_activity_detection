@@ -2,38 +2,44 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import torch
 
-from htad.amp_estimator import _thresh_prime_thresh_complex_gaussian_matlab
-from htad.data import ActivityDataGenerator, SystemConfig
-from htad.model import HeterogeneousTransformer
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from CE_methods.estimators import _thresh_prime_thresh_complex_gaussian_matlab
+from network.config import apply_cli_overrides, load_experiment_config, section_namespace
+from network.data import ActivityDataGenerator, SystemConfig
+from network.model import build_model_from_config
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Plot AMP NMSE vs iteration for amp_soft and amp_fixed.")
-    p.add_argument("--ckpt", type=str, default="checkpoints_lp32_gpu/last.pt")
-    p.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    p.add_argument("--num_test_batches", type=int, default=3)
-    p.add_argument("--batch_size", type=int, default=32)
-    p.add_argument("--max_iters", type=int, default=10)
-    p.add_argument("--camp_damping", type=float, default=0.7)
-    p.add_argument("--camp_lambda_floor", type=float, default=1e-6)
-    p.add_argument("--camp_fixed_lambda", type=float, default=0.1)
-    p.add_argument("--camp_prob_calib", type=str, default="none", choices=["none", "sigmoid_center"])
-    p.add_argument("--camp_prob_center", type=float, default=0.5)
-    p.add_argument("--camp_prob_alpha", type=float, default=12.0)
+    p.add_argument("--config", type=str, default="config.json", help="Experiment config JSON path.")
+    p.add_argument("--ckpt", type=str, default=None)
+    p.add_argument("--device", type=str, default=None)
+    p.add_argument("--num_test_batches", type=int, default=None)
+    p.add_argument("--batch_size", type=int, default=None)
+    p.add_argument("--max_iters", type=int, default=None)
+    p.add_argument("--camp_damping", type=float, default=None)
+    p.add_argument("--camp_lambda_floor", type=float, default=None)
+    p.add_argument("--camp_fixed_lambda", type=float, default=None)
+    p.add_argument("--camp_prob_calib", type=str, default=None, choices=["none", "sigmoid_center"])
+    p.add_argument("--camp_prob_center", type=float, default=None)
+    p.add_argument("--camp_prob_alpha", type=float, default=None)
     p.add_argument(
         "--out_png",
         type=str,
-        default="checkpoints_lp32_gpu/amp_nmse_vs_iter_b3x32.png",
+        default=None,
     )
     p.add_argument(
         "--out_txt",
         type=str,
-        default="checkpoints_lp32_gpu/amp_nmse_vs_iter_b3x32.txt",
+        default=None,
     )
     return p.parse_args()
 
@@ -59,18 +65,9 @@ def apply_prob_calib(
     raise ValueError(f"Unknown prob calib mode: {mode}")
 
 
-def build_model_from_ckpt(ckpt: dict, device: torch.device) -> HeterogeneousTransformer:
-    cfg = ckpt["config"]
-    model = HeterogeneousTransformer(
-        num_devices=cfg["num_devices"],
-        pilot_len=cfg["pilot_len"],
-        dim=cfg["dim"],
-        num_layers=cfg["num_layers"],
-        num_heads=cfg["num_heads"],
-        head_dim=cfg["head_dim"],
-        ff_dim=cfg["ff_dim"],
-        score_scale=cfg["score_scale"],
-    ).to(device)
+def build_model_from_ckpt(ckpt: dict, device: torch.device) -> torch.nn.Module:
+    cfg = ckpt.get("model_config", ckpt["config"])
+    model = build_model_from_config(cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     return model
@@ -126,7 +123,28 @@ def camp_nmse_curve_one_sample(
 
 @torch.no_grad()
 def main() -> None:
-    args = parse_args()
+    cli = parse_args()
+    exp_cfg = load_experiment_config(cli.config)
+    args = section_namespace(exp_cfg, "plot_plot_amp_nmse_vs_iter")
+    apply_cli_overrides(
+        args,
+        cli,
+        [
+            "ckpt",
+            "device",
+            "num_test_batches",
+            "batch_size",
+            "max_iters",
+            "camp_damping",
+            "camp_lambda_floor",
+            "camp_fixed_lambda",
+            "camp_prob_calib",
+            "camp_prob_center",
+            "camp_prob_alpha",
+            "out_png",
+            "out_txt",
+        ],
+    )
     device = torch.device(args.device)
     ckpt_path = Path(args.ckpt)
     if not ckpt_path.exists():
@@ -191,6 +209,8 @@ def main() -> None:
     soft_db = [10.0 * math.log10(max(v, 1e-30)) for v in soft_mean]
     fixed_db = [10.0 * math.log10(max(v, 1e-30)) for v in fixed_mean]
     xs = list(range(1, args.max_iters + 1))
+
+    import matplotlib.pyplot as plt
 
     plt.figure(figsize=(7.2, 4.8))
     plt.plot(xs, soft_db, marker="o", linewidth=2.0, label="AMP-CAMP + soft probs")

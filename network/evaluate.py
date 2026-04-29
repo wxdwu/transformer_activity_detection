@@ -1,28 +1,38 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import torch
 
-from htad.data import ActivityDataGenerator, SystemConfig
-from htad.metrics import pm_pf_curve
-from htad.model import HeterogeneousTransformer
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from network.config import apply_cli_overrides, load_experiment_config, section_namespace
+from network.data import ActivityDataGenerator, SystemConfig
+from network.metrics import pm_pf_curve
+from network.model import build_model_from_config
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate PM/PF curve from a trained checkpoint.")
-    parser.add_argument("--ckpt", type=str, default="checkpoints/last.pt")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--num_test_batches", type=int, default=80)
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--num_thresholds", type=int, default=41)
-    parser.add_argument("--out_csv", type=str, default="pm_pf_curve.csv")
+    parser.add_argument("--config", type=str, default="config.json", help="Experiment config JSON path.")
+    parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--num_test_batches", type=int, default=None)
+    parser.add_argument("--batch_size", type=int, default=None)
+    parser.add_argument("--num_thresholds", type=int, default=None)
+    parser.add_argument("--out_csv", type=str, default=None)
     return parser.parse_args()
 
 
 def main() -> None:
-    args = parse_args()
+    cli = parse_args()
+    exp_cfg = load_experiment_config(cli.config)
+    args = section_namespace(exp_cfg, "network_evaluate")
+    apply_cli_overrides(args, cli, ["ckpt", "device", "num_test_batches", "batch_size", "num_thresholds", "out_csv"])
     device = torch.device(args.device)
     ckpt_path = Path(args.ckpt)
     if not ckpt_path.exists():
@@ -30,18 +40,9 @@ def main() -> None:
 
     ckpt = torch.load(ckpt_path, map_location=device)
     sys_cfg = SystemConfig(**ckpt["system_config"])
-    cfg = ckpt["config"]
+    cfg = ckpt.get("model_config", ckpt["config"])
 
-    model = HeterogeneousTransformer(
-        num_devices=cfg["num_devices"],
-        pilot_len=cfg["pilot_len"],
-        dim=cfg["dim"],
-        num_layers=cfg["num_layers"],
-        num_heads=cfg["num_heads"],
-        head_dim=cfg["head_dim"],
-        ff_dim=cfg["ff_dim"],
-        score_scale=cfg["score_scale"],
-    ).to(device)
+    model = build_model_from_config(cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
