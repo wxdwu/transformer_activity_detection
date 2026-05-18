@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import argparse
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 from tqdm import tqdm
@@ -13,173 +13,214 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from network.config import (
-    apply_cli_overrides,
-    load_experiment_config,
-    model_config_from_experiment,
-    section_namespace,
-    system_config_from_experiment,
-)
-from network.data import ActivityDataGenerator
+from network.data import ActivityDataGenerator, SystemConfig
 from network.losses import weighted_activity_loss
 from network.metrics import pm_pf_at_threshold
 from network.model import build_model_from_config
 
 
-def parse_args() -> argparse.Namespace:
-    # 命令行参数只作为临时覆盖项使用；真正的默认实验设置来自 config.json。
-    # 这里把 default 设为 None，是为了区分“用户没有传这个参数”和“用户想覆盖配置”。
-    parser = argparse.ArgumentParser(description="Train heterogeneous transformer for device activity detection.")
-    parser.add_argument("--config", type=str, default="config.json", help="Experiment config JSON path.")
-    parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--save_dir", type=str, default=None)
-    parser.add_argument("--log_file", type=str, default=None, help="Optional path to append per-epoch summary logs.")
-    parser.add_argument("--seed", type=int, default=None)
+# =========================
+# System/Data Parameters
+# =========================
+N = 200  # number of users
+M = 32  # number of antennas
+LP = 30  # pilot length
+ACTIVITY_PROB = 0.1
+CELL_RADIUS_M = 250.0
+PMAX_DBM = 23.0
+NOISE_MODE = "snr"  # "snr" or "thermal"
+SNR_DB = 20.0
+NOISE_POWER_DBM_HZ = -169.0
+BANDWIDTH_HZ = 10e6
 
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--steps_per_epoch", type=int, default=None)
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument(
-        "--amp",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Use CUDA mixed precision training when available.",
-    )
-    parser.add_argument("--amp_dtype", type=str, default=None, choices=["bf16", "fp16"])
-    parser.add_argument("--warmup_epochs", type=int, default=None)
-    parser.add_argument("--grad_clip", type=float, default=None)
-    parser.add_argument("--lr_decay_epochs", type=str, default=None)
-    parser.add_argument("--lr_decay_factor", type=float, default=None)
+# =========================
+# Model Parameters
+# =========================
+MODEL_NAME = "base"
+DIM = 128
+NUM_LAYERS = 5
+NUM_HEADS = 8
+HEAD_DIM = 32
+FF_DIM = 512
+SCORE_SCALE = 10.0
+ATTN_DROPOUT = 0.0
+FFN_DROPOUT = 0.0
+CTX_ATTN_DROPOUT = 0.0
+NORM_TYPE = "batch"
 
-    parser.add_argument("--eval_batches", type=int, default=None)
-    parser.add_argument("--eval_threshold", type=float, default=None)
-    parser.add_argument(
-        "--fixed_eval_set",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Use a fixed validation set across epochs for stable PM/PF curves.",
+# =========================
+# Training Parameters
+# =========================
+DEVICE = "auto"
+SAVE_DIR = Path("checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000")
+LOG_FILE = SAVE_DIR / "train.log"
+SEED = 42
+EPOCHS = 100
+STEPS_PER_EPOCH = 2000
+BATCH_SIZE = 128
+LR = 1e-4
+USE_AMP = True
+AMP_DTYPE = "bf16"  # "bf16" or "fp16"
+WARMUP_EPOCHS = 0
+GRAD_CLIP = 0.0
+LR_DECAY_EPOCHS = "90,97"
+LR_DECAY_FACTOR = 0.1
+EVAL_BATCHES = 20
+EVAL_THRESHOLD = 0.5
+FIXED_EVAL_SET = True
+
+
+def resolve_device(raw: str) -> str:
+    if raw == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return raw
+
+
+def build_args() -> SimpleNamespace:
+    return SimpleNamespace(
+        num_devices=N,
+        num_antennas=M,
+        pilot_len=LP,
+        activity_prob=ACTIVITY_PROB,
+        cell_radius_m=CELL_RADIUS_M,
+        pmax_dbm=PMAX_DBM,
+        noise_mode=NOISE_MODE,
+        snr_db=SNR_DB,
+        noise_power_dbm_hz=NOISE_POWER_DBM_HZ,
+        bandwidth_hz=BANDWIDTH_HZ,
+        model_name=MODEL_NAME,
+        dim=DIM,
+        num_layers=NUM_LAYERS,
+        num_heads=NUM_HEADS,
+        head_dim=HEAD_DIM,
+        ff_dim=FF_DIM,
+        score_scale=SCORE_SCALE,
+        attn_dropout=ATTN_DROPOUT,
+        ffn_dropout=FFN_DROPOUT,
+        ctx_attn_dropout=CTX_ATTN_DROPOUT,
+        norm_type=NORM_TYPE,
+        device=resolve_device(DEVICE),
+        save_dir=SAVE_DIR,
+        log_file=LOG_FILE,
+        seed=SEED,
+        epochs=EPOCHS,
+        steps_per_epoch=STEPS_PER_EPOCH,
+        batch_size=BATCH_SIZE,
+        lr=LR,
+        amp=USE_AMP,
+        amp_dtype=AMP_DTYPE,
+        warmup_epochs=WARMUP_EPOCHS,
+        grad_clip=GRAD_CLIP,
+        lr_decay_epochs=LR_DECAY_EPOCHS,
+        lr_decay_factor=LR_DECAY_FACTOR,
+        eval_batches=EVAL_BATCHES,
+        eval_threshold=EVAL_THRESHOLD,
+        fixed_eval_set=FIXED_EVAL_SET,
     )
-    return parser.parse_args()
+
+
+def build_system_config(args: SimpleNamespace) -> SystemConfig:
+    return SystemConfig(
+        num_devices=args.num_devices,
+        num_antennas=args.num_antennas,
+        pilot_len=args.pilot_len,
+        activity_prob=args.activity_prob,
+        cell_radius_m=args.cell_radius_m,
+        noise_power_dbm_hz=args.noise_power_dbm_hz,
+        bandwidth_hz=args.bandwidth_hz,
+        pmax_dbm=args.pmax_dbm,
+        noise_mode=args.noise_mode,
+        snr_db=args.snr_db,
+    )
+
+
+def build_model_config(args: SimpleNamespace) -> dict:
+    return {
+        "model_name": args.model_name,
+        "num_devices": args.num_devices,
+        "pilot_len": args.pilot_len,
+        "dim": args.dim,
+        "num_layers": args.num_layers,
+        "num_heads": args.num_heads,
+        "head_dim": args.head_dim,
+        "ff_dim": args.ff_dim,
+        "score_scale": args.score_scale,
+        "attn_dropout": args.attn_dropout,
+        "ffn_dropout": args.ffn_dropout,
+        "ctx_attn_dropout": args.ctx_attn_dropout,
+        "norm_type": args.norm_type,
+    }
 
 
 def main() -> None:
-    # 1) 读取配置文件，并用命令行参数覆盖其中的 network_train 部分。
-    # 优先级：命令行参数 > config.json > network/config.py 中的 DEFAULT_CONFIG。
-    cli = parse_args()
-    exp_cfg = load_experiment_config(cli.config)
-    args = section_namespace(exp_cfg, "network_train")
-    apply_cli_overrides(
-        args,
-        cli,
-        [
-            "device",
-            "save_dir",
-            "log_file",
-            "seed",
-            "epochs",
-            "steps_per_epoch",
-            "batch_size",
-            "lr",
-            "amp",
-            "amp_dtype",
-            "warmup_epochs",
-            "grad_clip",
-            "lr_decay_epochs",
-            "lr_decay_factor",
-            "eval_batches",
-            "eval_threshold",
-            "fixed_eval_set",
-        ],
-    )
-
-    # 2) 固定随机种子，选择训练设备，并设置混合精度训练选项。
-    # device="auto" 会在 network.config.section_namespace 中自动解析成 cuda 或 cpu。
+    args = build_args()
     torch.manual_seed(args.seed)
+
     device = torch.device(args.device)
-    #AMP = Automatic Mixed Precision，自动混合精度训练
     use_amp = bool(args.amp and device.type == "cuda")
     amp_dtype = torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
-    # fp16 需要 GradScaler 防止梯度下溢；bf16 通常不需要 scaler。
     use_scaler = bool(use_amp and amp_dtype == torch.float16)
     if device.type == "cuda":
-        # 允许 TF32，可以在 NVIDIA GPU 上加速矩阵乘法，通常对训练精度影响很小。
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.set_float32_matmul_precision("high")
 
-    # 3) 根据 config.json 的 network_train.system 部分构造仿真系统和在线数据生成器。
-    # 每次 sample_batch 都会随机生成一批新的导频、信道、活跃标签和接收信号。
-    cfg = system_config_from_experiment(exp_cfg)
-    data_gen = ActivityDataGenerator(cfg=cfg, device=device)
-
-    # 4) 根据 config.json 的 network_train.model 部分构造网络。
-    # model_cfg 会自动补入 num_devices 和 pilot_len，因为这两个参数决定输入层尺寸。
-    model_cfg = model_config_from_experiment(exp_cfg)
-
+    system_cfg = build_system_config(args)
+    model_cfg = build_model_config(args)
+    data_gen = ActivityDataGenerator(cfg=system_cfg, device=device)
     model = build_model_from_config(model_cfg).to(device)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    decay_epochs = sorted(int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip())
 
-    decay_set = {int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip()}
-    save_dir = Path(args.save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
-    log_path = Path(args.log_file) if args.log_file else None
-    if log_path is not None:
-        # 如果配置了 log_file，就把命令、系统参数和模型参数写入日志，方便复现实验。
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+    args.save_dir.mkdir(parents=True, exist_ok=True)
+    if args.log_file:
+        args.log_file.parent.mkdir(parents=True, exist_ok=True)
         command_line = subprocess.list2cmdline([sys.executable, *sys.argv])
-        with log_path.open("a", encoding="utf-8") as f:
+        with args.log_file.open("a", encoding="utf-8") as f:
             f.write("\n")
             f.write(f"Command: {command_line}\n")
-            f.write(f"Config: {cli.config}\n")
-            f.write(f"Args: {json.dumps(vars(args), sort_keys=True)}\n")
-            f.write(f"System: {json.dumps(cfg.__dict__, sort_keys=True)}\n")
-            f.write(f"Model: {json.dumps(model_cfg, sort_keys=True)}\n")
-            f.write("\n")
+            f.write(f"Args: {json.dumps(vars(args), sort_keys=True, default=str)}\n")
+            f.write(f"System: {json.dumps(system_cfg.__dict__, sort_keys=True)}\n")
+            f.write(f"Model: {json.dumps(model_cfg, sort_keys=True)}\n\n")
 
     best_pm = float("inf")
     eval_cache = None
     if args.fixed_eval_set:
-        # 固定验证集可以让不同 epoch 的 PM/PF 曲线更稳定，减少随机验证数据带来的抖动。
         eval_cache = [data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)]
-    decay_epochs_sorted = sorted(decay_set)
+
     for epoch in range(1, args.epochs + 1):
-        # 5) 在每个 epoch 开始时更新学习率。
-        # warmup_epochs > 0 时先线性升高学习率；之后按 lr_decay_epochs 进行阶梯衰减。
         if args.warmup_epochs > 0 and epoch <= args.warmup_epochs:
-            lr_now = args.lr * (float(epoch) / float(args.warmup_epochs))
+            lr_now = args.lr * float(epoch) / float(args.warmup_epochs)
         else:
-            passed = sum(1 for d in decay_epochs_sorted if d < epoch)
-            lr_now = args.lr * (args.lr_decay_factor ** passed)
-        for g in optimizer.param_groups:
-            g["lr"] = lr_now
+            passed_decays = sum(1 for d in decay_epochs if d < epoch)
+            lr_now = args.lr * (args.lr_decay_factor ** passed_decays)
+        for group in optimizer.param_groups:
+            group["lr"] = lr_now
 
         model.train()
         running_loss = 0.0
-        n_steps = 0
+        steps_done = 0
         skipped_nonfinite = 0
         pbar = tqdm(range(args.steps_per_epoch), desc=f"Epoch {epoch}/{args.epochs}", leave=False)
         for _ in pbar:
-            # 6) 在线生成一个训练 batch。
-            # x_b: 每个设备的导频特征；x_y: 接收信号协方差特征；label: 真实活跃状态。
             batch = data_gen.sample_batch(args.batch_size)
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                logits, probs = model(batch["x_b"], batch["x_y"])
+                logits, _ = model(batch["x_b"], batch["x_y"])
                 loss = weighted_activity_loss(
                     logits=logits,
                     targets=batch["label"],
-                    activity_prob=cfg.activity_prob,
+                    activity_prob=system_cfg.activity_prob,
                 )
+
             if not torch.isfinite(loss):
-                # 极端数值异常时跳过该 step，避免把 NaN/Inf 写入模型参数。
                 skipped_nonfinite += 1
                 optimizer.zero_grad(set_to_none=True)
                 continue
 
             optimizer.zero_grad(set_to_none=True)
             if use_scaler:
-                # fp16 混合精度路径：先 scale loss，再反传和更新参数。
                 scaler.scale(loss).backward()
                 if args.grad_clip > 0.0:
                     scaler.unscale_(optimizer)
@@ -187,61 +228,56 @@ def main() -> None:
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                # 普通 fp32 或 bf16 路径。
                 loss.backward()
                 if args.grad_clip > 0.0:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
 
+            steps_done += 1
             running_loss += float(loss.item())
-            n_steps += 1
-            pbar.set_postfix(loss=f"{running_loss / max(1, n_steps):.4f}")
+            pbar.set_postfix(loss=f"{running_loss / max(1, steps_done):.4f}")
 
-        # 7) 每个 epoch 结束后做一次验证，只计算 PM/PF，不更新模型参数。
         model.eval()
         eval_probs = []
         eval_labels = []
         with torch.no_grad():
-            eval_iter = eval_cache if eval_cache is not None else [data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)]
+            eval_iter = eval_cache if eval_cache is not None else [
+                data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)
+            ]
             for batch in eval_iter:
                 with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                    _, p = model(batch["x_b"], batch["x_y"])
-                eval_probs.append(p)
+                    _, probs = model(batch["x_b"], batch["x_y"])
+                eval_probs.append(probs)
                 eval_labels.append(batch["label"])
 
-        eval_probs_t = torch.cat(eval_probs, dim=0)
-        eval_labels_t = torch.cat(eval_labels, dim=0)
-        pm, pf = pm_pf_at_threshold(eval_probs_t, eval_labels_t, args.eval_threshold)
-        avg_loss = running_loss / float(max(1, n_steps))
-        lr_now = optimizer.param_groups[0]["lr"]
-        mean_prob = float(eval_probs_t.mean().item())
-        # PM: 漏检概率；PF: 虚警概率；p_mean: 模型输出的平均活跃概率，用来观察输出是否塌缩。
+        probs_all = torch.cat(eval_probs, dim=0)
+        labels_all = torch.cat(eval_labels, dim=0)
+        pm, pf = pm_pf_at_threshold(probs_all, labels_all, args.eval_threshold)
+        avg_loss = running_loss / float(max(1, steps_done))
+        mean_prob = float(probs_all.mean().item())
         summary = (
             f"Epoch {epoch:03d} | loss={avg_loss:.6f} | PM@{args.eval_threshold:.2f}={pm:.6f} | "
             f"PF@{args.eval_threshold:.2f}={pf:.6f} | p_mean={mean_prob:.4f} | "
             f"skip={skipped_nonfinite} | lr={lr_now:.2e}"
         )
         print(summary)
-        if log_path is not None:
-            with log_path.open("a", encoding="utf-8") as f:
+        if args.log_file:
+            with args.log_file.open("a", encoding="utf-8") as f:
                 f.write(summary + "\n")
 
-        # 8) 保存 checkpoint。
-        # last.pt 始终保存最新 epoch；best_pm.pt 保存验证集 PM 最低的模型。
         ckpt = {
             "model_state": model.state_dict(),
             "config": vars(args),
             "model_config": model_cfg,
-            "experiment_config": exp_cfg,
-            "system_config": cfg.__dict__,
+            "system_config": system_cfg.__dict__,
             "epoch": epoch,
         }
-        torch.save(ckpt, save_dir / "last.pt")
+        torch.save(ckpt, args.save_dir / "last.pt")
         if pm < best_pm:
             best_pm = pm
-            torch.save(ckpt, save_dir / "best_pm.pt")
+            torch.save(ckpt, args.save_dir / "best_pm.pt")
 
-    print(f"Training done. Checkpoints saved in: {save_dir.resolve()}")
+    print(f"Training done. Checkpoints saved in: {args.save_dir.resolve()}")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "noise_power_dbm_hz": -169.0,
             "bandwidth_hz": 10e6,
             "pmax_dbm": 23.0,
+            "noise_mode": "snr",
+            "snr_db": 20.0,
         },
         "model": {
             "model_name": "base",
@@ -86,6 +88,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "camp_damping": 0.7,
         "camp_fixed_lambda": 0.1,
         "out_txt": "CE_methods/detection_lmmse_report.txt",
+    },
+    "CE_methods_camp_genie_data": {
+        "ckpt": "checkpoint/checkpoints/last.pt",
+        "device": "auto",
+        "mc_times": 100,
+        "max_iter": 40,
+        "seed": 1,
+        "threshold": 0.5,
+        "matrix": "s",
+        "out_txt": "",
     },
     "network_compare_active_indices": {
         "ckpt": "checkpoint/checkpoints/last.pt",

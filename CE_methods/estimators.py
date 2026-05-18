@@ -641,49 +641,15 @@ def thresh_prime_thresh_complex_gaussian_genie(
     This intentionally follows the MATLAB loop-level logic: per-user lambda,
     Bernoulli-Gaussian MMSE shrinkage, and averaged Onsager derivative matrix.
     """
-    if y.dim() != 2 or not torch.is_complex(y):
-        raise ValueError(f"`y` must be complex [N, M], got shape={tuple(y.shape)}")
-
-    n, m = y.shape
-    device = y.device
-    dtype = y.dtype
-    rtype = y.real.dtype
-
-    lam = lambda_vec.to(device=device, dtype=rtype).flatten()
-    pls = p_ls.to(device=device, dtype=rtype).flatten()
-    if lam.numel() != n or pls.numel() != n:
-        raise ValueError("`lambda_vec` and `p_ls` must have length N.")
-
-    eta = torch.zeros((n, m), dtype=dtype, device=device)
-    eta_prime_avg = torch.zeros((m, m), dtype=dtype, device=device)
-    eye_m = torch.eye(m, dtype=dtype, device=device)
-    sigma_t = torch.as_tensor(sigma, dtype=rtype, device=device)
-    sigma2 = sigma_t * sigma_t
-
-    for user in range(n):
-        lam_n = lam[user]
-        p_n = pls[user]
-        a = p_n / (p_n + sigma2)
-        term_power = ((p_n + sigma2) / sigma2) ** float(m)
-        b = (1.0 - lam_n) / lam_n * term_power
-        c = p_n / (sigma2 * (p_n + sigma2))
-        y_norm2 = torch.sum(torch.abs(y[user, :]) ** 2)
-        t0 = b * torch.exp(-c * y_norm2)
-        t = 1.0 + t0
-        coeff1 = a / t
-
-        eta[user, :] = coeff1.to(dtype=dtype) * y[user, :]
-
-        coeff0 = a * a / sigma2
-        term_derivative = (
-            coeff0.to(dtype=dtype)
-            * (y[user, :].conj().unsqueeze(-1) @ y[user, :].unsqueeze(0))
-            * (t0 / (t * t)).to(dtype=dtype)
-        )
-        eta_prime_avg = eta_prime_avg + coeff1.to(dtype=dtype) * eye_m + term_derivative
-
-    eta_prime_avg = eta_prime_avg / float(n)
-    return eta, eta_prime_avg
+    # Same formulas as the MATLAB-loop version, but evaluated in log-domain.
+    # Directly computing b * exp(-c||y||^2) can produce inf * 0 = nan.
+    return _thresh_prime_thresh_complex_gaussian_matlab(
+        y=y,
+        sigma=torch.as_tensor(sigma, dtype=y.real.dtype, device=y.device),
+        lambda_vec=lambda_vec,
+        p_ls=p_ls,
+        lambda_floor=1e-9,
+    )
 
 
 def camp_genie(

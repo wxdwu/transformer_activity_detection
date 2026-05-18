@@ -1,0 +1,32 @@
+CAMP_Genie on network/data.py samples
+Checkpoint: checkpoint\tmp_new_data_train_smoke\last.pt
+N/L/M: 200/30/32
+Activity probability: 0.1
+Noise mode: snr
+SNR dB: 20.0
+Matrix mapping: s
+Monte Carlo times: 1
+Max iter: 1
+Detection threshold for probability diagnostics: 0.5
+Seed: 1
+
+Mapping:
+A = batch['s'][i]
+X = sqrt(batch['pg'][i])[:,None] * batch['label'][i][:,None] * batch['h'][i]
+fading = batch['pg'][i], because X active-row variance is pg
+Y = A @ X + W
+Network probabilities are passed directly as per-user lambda, without thresholding.
+
+iter,standard_camp_nmse_db,network_prob_camp_nmse_db,genie_camp_nmse_db
+1,-1.14938188,-1.01136982,-2.94756770
+
+Network probability diagnostics:
+PM@0.50: 0.583333
+PF@0.50: 0.482955
+Mean probability: 0.499003
+Probability std: 0.010094
+Active probability mean: 0.496467
+Inactive probability mean: 0.499348
+Active probability p10/p50/p90: 0.482524, 0.495626, 0.510901
+Inactive probability p10/p50/p90: 0.486864, 0.499654, 0.511725
+Probability-label correlation: -0.092774

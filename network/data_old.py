@@ -16,8 +16,6 @@ class SystemConfig:
     noise_power_dbm_hz: float = -169.0
     bandwidth_hz: float = 10e6
     pmax_dbm: float = 23.0
-    noise_mode: str = "snr"
-    snr_db: float = 20.0
 
 
 class ActivityDataGenerator:
@@ -45,16 +43,6 @@ class ActivityDataGenerator:
         noise_power_w = 10.0 ** ((noise_power_dbm - 30.0) / 10.0)
         return float(noise_power_w)
 
-    def _batch_noise_variance(self, pg: torch.Tensor, activity: torch.Tensor, pilot_len: int) -> torch.Tensor:
-        if self.cfg.noise_mode == "thermal":
-            thermal = self._noise_variance()
-            return torch.full((pg.shape[0],), thermal, device=self.device, dtype=pg.dtype)
-        if self.cfg.noise_mode == "snr":
-            signal_power_per_pilot = (pg * activity).sum(dim=1) / float(pilot_len)
-            snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
-            return (snr_scale * signal_power_per_pilot).clamp_min(1e-30)
-        raise ValueError(f"Unknown noise_mode: {self.cfg.noise_mode}")
-
     @staticmethod
     def _complex_to_real_feature(x: torch.Tensor) -> torch.Tensor:
         return torch.cat([x.real, x.imag], dim=-1)
@@ -70,9 +58,8 @@ class ActivityDataGenerator:
         cfg = self.cfg
         bsz, n, lp, m = batch_size, cfg.num_devices, cfg.pilot_len, cfg.num_antennas
 
-        # Pilot sequences: S in C^{Lp x N}, with entries CN(0, 1/Lp).
-        # This matches AMP_Genie/test_mc.m: (randn + 1i*randn) / sqrt(2*L).
-        s = self._complex_gaussian(bsz, lp, n) / math.sqrt(float(lp))
+        # Pilot sequences: S in C^{Lp x N}
+        s = self._complex_gaussian(bsz, lp, n)
 
         distances = self._sample_distances_m(bsz)
         g = self._large_scale_gain(distances)
@@ -92,8 +79,8 @@ class ActivityDataGenerator:
 
         # Channels H and noise W
         h = self._complex_gaussian(bsz, n, m)
-        noise_var = self._batch_noise_variance(pg, a, lp)
-        w = torch.sqrt(noise_var).view(bsz, 1, 1) * self._complex_gaussian(bsz, lp, m)
+        noise_var = self._noise_variance()
+        w = math.sqrt(noise_var) * self._complex_gaussian(bsz, lp, m)
 
         # Y = B A H + W
         bh = (b * a.unsqueeze(1)) @ h
@@ -123,7 +110,7 @@ class ActivityDataGenerator:
                     "pg": pg,  # [B, N], equivalent large-scale power factor
                     "beta": g,  # [B, N], large-scale fading gain
                     "h": h,  # [B, N, M], complex (ground-truth)
-                    "noise_var": noise_var.to(dtype=torch.float32),  # [B], per-sample noise variance
+                    "noise_var": torch.tensor(noise_var, device=self.device, dtype=torch.float32),
                 }
             )
         return out

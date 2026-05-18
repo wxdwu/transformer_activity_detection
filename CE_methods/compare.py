@@ -368,7 +368,7 @@ def main() -> None:
         pred_idx_list = active_indices_from_probs(probs, threshold=args.threshold, topk=topk)
         # 真实活跃集合：由标签 label 得到，供 oracle 方法使用。
         true_idx_list = active_indices_from_probs(labels, threshold=0.5, topk=None)
-        noise_var = float(batch["noise_var"].item())
+        noise_var_batch = batch["noise_var"].flatten()
 
         for i in range(args.batch_size):
             # x_true 是完整真实信道矩阵 [N, M]：
@@ -388,7 +388,7 @@ def main() -> None:
                     pred_idx_i=pred_idx_list[i],
                     true_idx_i=true_idx_list[i],
                     n_users=labels.shape[1],
-                    noise_var=noise_var,
+                    noise_var=float(noise_var_batch[i].item()),
                     args=args,
                 )
                 nmse_by_method[method].append(complex_nmse(x_hat, x_true))
