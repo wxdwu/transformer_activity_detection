@@ -1,9 +1,0 @@
-
-Command: C:\Users\26770\Desktop\correlated_activity_transformer\.venv\Scripts\python.exe network\train.py --device auto --epochs 2 --steps_per_epoch 20 --batch_size 16 --eval_batches 2 --save_dir checkpoint\tmp_new_data_train_smoke --log_file checkpoint\tmp_new_data_train_smoke\train.log --fixed_eval_set --amp_dtype bf16
-Config: config.json
-Args: {"amp": true, "amp_dtype": "bf16", "batch_size": 16, "device": "cuda", "epochs": 2, "eval_batches": 2, "eval_threshold": 0.5, "fixed_eval_set": true, "grad_clip": 0.0, "log_file": "checkpoint\\tmp_new_data_train_smoke\\train.log", "lr": 0.0001, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model": {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_heads": 8, "num_layers": 5, "score_scale": 10.0}, "save_dir": "checkpoint\\tmp_new_data_train_smoke", "seed": 42, "steps_per_epoch": 20, "system": {"activity_prob": 0.1, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 200, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}, "warmup_epochs": 0}
-System: {"activity_prob": 0.1, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 200, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
-Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_devices": 200, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "score_scale": 10.0}
-
-Epoch 001 | loss=0.248969 | PM@0.50=0.483146 | PF@0.50=0.496278 | p_mean=0.5000 | skip=0 | lr=1.00e-04
-Epoch 002 | loss=0.248989 | PM@0.50=0.478331 | PF@0.50=0.500433 | p_mean=0.5001 | skip=0 | lr=1.00e-04
