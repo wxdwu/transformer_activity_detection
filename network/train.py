@@ -13,16 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from network.data import ActivityDataGenerator, SystemConfig
+from network.data import ActivityDataGenerator as IndependentActivityDataGenerator
+from network.data import SystemConfig as IndependentSystemConfig
+from network.data_correlated import ActivityDataGenerator as CorrelatedActivityDataGenerator
+from network.data_correlated import SystemConfig as CorrelatedSystemConfig
 from network.losses import weighted_activity_loss
-from network.metrics import pm_pf_at_threshold
+from network.metrics import best_pm_pf_threshold, pm_pf_at_threshold
 from network.model import build_model_from_config
 
 
 # =========================
 # System/Data Parameters
 # =========================
-N = 200  # number of users
+DATA_MODE = "correlated"  # "independent" or "correlated"
+N = 100  # number of users
 M = 32  # number of antennas
 LP = 30  # pilot length
 ACTIVITY_PROB = 0.1
@@ -36,13 +40,14 @@ BANDWIDTH_HZ = 10e6
 # =========================
 # Model Parameters
 # =========================
-MODEL_NAME = "base"
+MODEL_NAME = "grouped"  # "grouped" or "base"
 DIM = 128
 NUM_LAYERS = 5
 NUM_HEADS = 8
 HEAD_DIM = 32
 FF_DIM = 512
 SCORE_SCALE = 10.0
+NUM_GROUPS = 4
 ATTN_DROPOUT = 0.0
 FFN_DROPOUT = 0.0
 CTX_ATTN_DROPOUT = 0.0
@@ -52,20 +57,21 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = Path("checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000")
+SAVE_DIR = Path("models/checkpoints")
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
-EPOCHS = 100
-STEPS_PER_EPOCH = 2000
+EPOCHS = 10
+STEPS_PER_EPOCH = 500
 BATCH_SIZE = 128
-LR = 1e-4
+LR = 3e-4
+WEIGHT_DECAY = 0.0
 USE_AMP = True
 AMP_DTYPE = "bf16"  # "bf16" or "fp16"
-WARMUP_EPOCHS = 0
-GRAD_CLIP = 0.0
+WARMUP_EPOCHS = 1
+GRAD_CLIP = 1.0
 LR_DECAY_EPOCHS = "90,97"
 LR_DECAY_FACTOR = 0.1
-EVAL_BATCHES = 20
+EVAL_BATCHES = 10
 EVAL_THRESHOLD = 0.5
 FIXED_EVAL_SET = True
 
@@ -79,6 +85,7 @@ def resolve_device(raw: str) -> str:
 def build_args() -> SimpleNamespace:
     return SimpleNamespace(
         num_devices=N,
+        data_mode=DATA_MODE,
         num_antennas=M,
         pilot_len=LP,
         activity_prob=ACTIVITY_PROB,
@@ -95,6 +102,7 @@ def build_args() -> SimpleNamespace:
         head_dim=HEAD_DIM,
         ff_dim=FF_DIM,
         score_scale=SCORE_SCALE,
+        num_groups=NUM_GROUPS,
         attn_dropout=ATTN_DROPOUT,
         ffn_dropout=FFN_DROPOUT,
         ctx_attn_dropout=CTX_ATTN_DROPOUT,
@@ -107,6 +115,7 @@ def build_args() -> SimpleNamespace:
         steps_per_epoch=STEPS_PER_EPOCH,
         batch_size=BATCH_SIZE,
         lr=LR,
+        weight_decay=WEIGHT_DECAY,
         amp=USE_AMP,
         amp_dtype=AMP_DTYPE,
         warmup_epochs=WARMUP_EPOCHS,
@@ -119,8 +128,9 @@ def build_args() -> SimpleNamespace:
     )
 
 
-def build_system_config(args: SimpleNamespace) -> SystemConfig:
-    return SystemConfig(
+def build_system_config(args: SimpleNamespace) -> IndependentSystemConfig | CorrelatedSystemConfig:
+    config_cls = CorrelatedSystemConfig if args.data_mode == "correlated" else IndependentSystemConfig
+    return config_cls(
         num_devices=args.num_devices,
         num_antennas=args.num_antennas,
         pilot_len=args.pilot_len,
@@ -134,22 +144,43 @@ def build_system_config(args: SimpleNamespace) -> SystemConfig:
     )
 
 
+def build_data_generator(
+    args: SimpleNamespace,
+    system_cfg: IndependentSystemConfig | CorrelatedSystemConfig,
+    device: torch.device,
+) -> IndependentActivityDataGenerator | CorrelatedActivityDataGenerator:
+    if args.data_mode == "correlated":
+        return CorrelatedActivityDataGenerator(cfg=system_cfg, device=device)
+    if args.data_mode == "independent":
+        return IndependentActivityDataGenerator(cfg=system_cfg, device=device)
+    raise ValueError(f"Unknown data_mode: {args.data_mode}")
+
+
 def build_model_config(args: SimpleNamespace) -> dict:
     return {
         "model_name": args.model_name,
         "num_devices": args.num_devices,
         "pilot_len": args.pilot_len,
+        "pilot_feature_dim": 2 * args.pilot_len + 2,
         "dim": args.dim,
         "num_layers": args.num_layers,
         "num_heads": args.num_heads,
         "head_dim": args.head_dim,
         "ff_dim": args.ff_dim,
         "score_scale": args.score_scale,
+        "num_groups": args.num_groups,
         "attn_dropout": args.attn_dropout,
         "ffn_dropout": args.ffn_dropout,
         "ctx_attn_dropout": args.ctx_attn_dropout,
         "norm_type": args.norm_type,
     }
+
+
+def activity_prior_for_loss(
+    batch: dict[str, torch.Tensor],
+    system_cfg: IndependentSystemConfig | CorrelatedSystemConfig,
+) -> float | torch.Tensor:
+    return batch.get("activity_prior", system_cfg.activity_prob)
 
 
 def main() -> None:
@@ -167,10 +198,10 @@ def main() -> None:
 
     system_cfg = build_system_config(args)
     model_cfg = build_model_config(args)
-    data_gen = ActivityDataGenerator(cfg=system_cfg, device=device)
+    data_gen = build_data_generator(args, system_cfg, device=device)
     model = build_model_from_config(model_cfg).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
     decay_epochs = sorted(int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip())
 
@@ -211,7 +242,7 @@ def main() -> None:
                 loss = weighted_activity_loss(
                     logits=logits,
                     targets=batch["label"],
-                    activity_prob=system_cfg.activity_prob,
+                    activity_prob=activity_prior_for_loss(batch, system_cfg),
                 )
 
             if not torch.isfinite(loss):
@@ -244,20 +275,30 @@ def main() -> None:
             eval_iter = eval_cache if eval_cache is not None else [
                 data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)
             ]
+            eval_loss_sum = 0.0
             for batch in eval_iter:
                 with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                    _, probs = model(batch["x_b"], batch["x_y"])
+                    logits, probs = model(batch["x_b"], batch["x_y"])
+                    eval_loss = weighted_activity_loss(
+                        logits=logits,
+                        targets=batch["label"],
+                        activity_prob=activity_prior_for_loss(batch, system_cfg),
+                    )
                 eval_probs.append(probs)
                 eval_labels.append(batch["label"])
+                eval_loss_sum += float(eval_loss.item())
 
         probs_all = torch.cat(eval_probs, dim=0)
         labels_all = torch.cat(eval_labels, dim=0)
         pm, pf = pm_pf_at_threshold(probs_all, labels_all, args.eval_threshold)
+        best_th, best_pm, best_pf = best_pm_pf_threshold(probs_all, labels_all)
         avg_loss = running_loss / float(max(1, steps_done))
+        avg_eval_loss = eval_loss_sum / float(len(eval_iter))
         mean_prob = float(probs_all.mean().item())
         summary = (
-            f"Epoch {epoch:03d} | loss={avg_loss:.6f} | PM@{args.eval_threshold:.2f}={pm:.6f} | "
-            f"PF@{args.eval_threshold:.2f}={pf:.6f} | p_mean={mean_prob:.4f} | "
+            f"Epoch {epoch:03d} | loss={avg_loss:.6f} | eval_loss={avg_eval_loss:.6f} | "
+            f"PM@{args.eval_threshold:.2f}={pm:.6f} | PF@{args.eval_threshold:.2f}={pf:.6f} | "
+            f"best_th={best_th:.2f} | best_PM={best_pm:.6f} | best_PF={best_pf:.6f} | p_mean={mean_prob:.4f} | "
             f"skip={skipped_nonfinite} | lr={lr_now:.2e}"
         )
         print(summary)

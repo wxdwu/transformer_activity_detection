@@ -73,7 +73,13 @@ class HeterogeneousMHA(nn.Module):
     多头输出投影也分成 Wo_B 和 Wo_Y 两套参数。
     """
 
-    def __init__(self, dim: int, num_heads: int, head_dim: int, attn_dropout: float = 0.0) -> None:
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        head_dim: int,
+        attn_dropout: float = 0.0,
+    ) -> None:
         super().__init__()
         # D  = dim，token 的嵌入维度。
         # H  = num_heads，多头注意力的 head 数。
@@ -172,6 +178,109 @@ class HeterogeneousMHA(nn.Module):
         return out_b, out_y
 
 
+class GroupedHeterogeneousMHA(nn.Module):
+    """MHA variant for group-correlated pilots.
+
+    Device tokens still attend jointly with the received-signal token, but
+    each pilot group uses its own Q/K/V projection matrices:
+        group g: Wq_b[g], Wk_b[g], Wv_b[g]
+        y token: Wq_y, Wk_y, Wv_y
+
+    The input order is assumed to be group-contiguous, matching
+    data_correlated.py: [group 0 users, group 1 users, ...].
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        head_dim: int,
+        num_groups: int = 4,
+        attn_dropout: float = 0.0,
+    ) -> None:
+        super().__init__()
+        if num_groups <= 0:
+            raise ValueError("num_groups must be positive.")
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.num_groups = num_groups
+
+        self.wq_b_groups = nn.ModuleList(
+            [nn.Linear(dim, num_heads * head_dim, bias=False) for _ in range(num_groups)]
+        )
+        self.wk_b_groups = nn.ModuleList(
+            [nn.Linear(dim, num_heads * head_dim, bias=False) for _ in range(num_groups)]
+        )
+        self.wv_b_groups = nn.ModuleList(
+            [nn.Linear(dim, num_heads * head_dim, bias=False) for _ in range(num_groups)]
+        )
+
+        self.wq_y = nn.Linear(dim, num_heads * head_dim, bias=False)
+        self.wk_y = nn.Linear(dim, num_heads * head_dim, bias=False)
+        self.wv_y = nn.Linear(dim, num_heads * head_dim, bias=False)
+
+        self.wo_b = nn.Parameter(torch.randn(num_heads, dim, head_dim) * 0.02)
+        self.wo_y = nn.Parameter(torch.randn(num_heads, dim, head_dim) * 0.02)
+        self.attn_drop = nn.Dropout(attn_dropout)
+
+    def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        b, t, _ = x.shape
+        return x.view(b, t, self.num_heads, self.head_dim)
+
+    def _split_groups(self, x_b: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        n = x_b.shape[1]
+        if n % self.num_groups != 0:
+            raise ValueError(
+                f"num_devices={n} must be divisible by num_groups={self.num_groups}."
+            )
+        return torch.chunk(x_b, self.num_groups, dim=1)
+
+    def _project_grouped(
+        self,
+        x_b: torch.Tensor,
+        projections: nn.ModuleList,
+    ) -> torch.Tensor:
+        chunks = self._split_groups(x_b)
+        projected = [
+            self._split_heads(proj(x_group))
+            for proj, x_group in zip(projections, chunks, strict=True)
+        ]
+        return torch.cat(projected, dim=1)
+
+    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        bsz, n, _ = x_b.shape
+
+        q_b = self._project_grouped(x_b, self.wq_b_groups)
+        k_b = self._project_grouped(x_b, self.wk_b_groups)
+        v_b = self._project_grouped(x_b, self.wv_b_groups)
+
+        q = torch.cat([q_b, self._split_heads(self.wq_y(x_y))], dim=1)
+        k = torch.cat([k_b, self._split_heads(self.wk_y(x_y))], dim=1)
+        v = torch.cat([v_b, self._split_heads(self.wv_y(x_y))], dim=1)
+
+        qh = q.permute(0, 2, 1, 3)
+        kh = k.permute(0, 2, 1, 3)
+        vh = v.permute(0, 2, 1, 3)
+
+        drop_p = self.attn_drop.p if self.training else 0.0
+        ctx = F.scaled_dot_product_attention(
+            qh,
+            kh,
+            vh,
+            attn_mask=None,
+            dropout_p=drop_p,
+            is_causal=False,
+        )
+        ctx = ctx.permute(0, 2, 1, 3)
+        ctx_b = ctx[:, :n]
+        ctx_y = ctx[:, n:]
+
+        out_b = torch.einsum("bnth,tdh->bnd", ctx_b, self.wo_b)
+        out_y = torch.einsum("bnth,tdh->bnd", ctx_y, self.wo_y)
+        return out_b, out_y
+
+
 class HeterogeneousFFN(nn.Module):
     """论文 Eq. (9) 中的 component-wise FF 模块。
 
@@ -240,6 +349,49 @@ class HeterogeneousEncoderLayer(nn.Module):
         hat_y = self.bn1_y(x_y + mha_y)
 
         # Eq. (9)：不同 token 类型各自经过 FF，再接 skip connection 和 BN/LN。
+        ff_b, ff_y = self.ffn(hat_b, hat_y)
+        out_b = self.bn2_b(hat_b + ff_b)
+        out_y = self.bn2_y(hat_y + ff_y)
+        return out_b, out_y
+
+
+class GroupedHeterogeneousEncoderLayer(nn.Module):
+    """Encoder layer whose pilot-token attention projections are group-specific."""
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        head_dim: int,
+        ff_dim: int,
+        num_groups: int = 4,
+        attn_dropout: float = 0.0,
+        ffn_dropout: float = 0.0,
+        norm_type: str = "batch",
+    ) -> None:
+        super().__init__()
+        self.mha = GroupedHeterogeneousMHA(
+            dim=dim,
+            num_heads=num_heads,
+            head_dim=head_dim,
+            num_groups=num_groups,
+            attn_dropout=attn_dropout,
+        )
+        self.ffn = HeterogeneousFFN(dim=dim, ff_dim=ff_dim, ffn_dropout=ffn_dropout)
+        if norm_type == "layer":
+            norm = TokenLayerNorm
+        else:
+            norm = TokenBatchNorm
+        self.bn1_b = norm(dim)
+        self.bn1_y = norm(dim)
+        self.bn2_b = norm(dim)
+        self.bn2_y = norm(dim)
+
+    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        mha_b, mha_y = self.mha(x_b, x_y)
+        hat_b = self.bn1_b(x_b + mha_b)
+        hat_y = self.bn1_y(x_y + mha_y)
+
         ff_b, ff_y = self.ffn(hat_b, hat_y)
         out_b = self.bn2_b(hat_b + ff_b)
         out_y = self.bn2_y(hat_y + ff_y)
@@ -335,6 +487,7 @@ class HeterogeneousTransformer(nn.Module):
         head_dim: int = 32,
         ff_dim: int = 512,
         score_scale: float = 10.0,
+        pilot_feature_dim: int | None = None,
         attn_dropout: float = 0.0,
         ffn_dropout: float = 0.0,
         ctx_attn_dropout: float = 0.0,
@@ -347,7 +500,8 @@ class HeterogeneousTransformer(nn.Module):
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
         # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}，再用共享的 W_B^in 投影。
-        self.embed_b = nn.Linear(2 * pilot_len, dim)
+        self.pilot_feature_dim = pilot_feature_dim or (2 * pilot_len)
+        self.embed_b = nn.Linear(self.pilot_feature_dim, dim)
         # 论文 Eq. (6) 和 Eq. (7)：Y 通过 vec(C) 表示，其中 C = YY^H / M，
         # 因此输入维度与基站天线数 M 无关。
         self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)
@@ -387,6 +541,83 @@ class HeterogeneousTransformer(nn.Module):
         return self.decoder(h_b, h_y)
 
 
+class GroupedHeterogeneousTransformer(nn.Module):
+    """Transformer for correlated activity groups.
+
+    This keeps the original heterogeneous structure:
+    - one shared pilot embedding W_B^in
+    - one received-signal embedding W_Y^in
+    - received-signal token has its own Q/K/V projections
+    - decoder is unchanged
+
+    The difference is inside every encoder MHA layer: pilot tokens in
+    different correlation groups use different Wq/Wk/Wv matrices.
+    """
+
+    def __init__(
+        self,
+        num_devices: int,
+        pilot_len: int,
+        dim: int = 128,
+        num_layers: int = 5,
+        num_heads: int = 8,
+        head_dim: int = 32,
+        ff_dim: int = 512,
+        score_scale: float = 10.0,
+        pilot_feature_dim: int | None = None,
+        num_groups: int = 4,
+        attn_dropout: float = 0.0,
+        ffn_dropout: float = 0.0,
+        ctx_attn_dropout: float = 0.0,
+        norm_type: str = "batch",
+    ) -> None:
+        super().__init__()
+        if num_devices % num_groups != 0:
+            raise ValueError(
+                f"num_devices={num_devices} must be divisible by num_groups={num_groups}."
+            )
+        self.num_devices = num_devices
+        self.pilot_len = pilot_len
+        self.dim = dim
+        self.num_groups = num_groups
+
+        self.pilot_feature_dim = pilot_feature_dim or (2 * pilot_len)
+        self.embed_b = nn.Linear(self.pilot_feature_dim, dim)
+        self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)
+
+        self.layers = nn.ModuleList(
+            [
+                GroupedHeterogeneousEncoderLayer(
+                    dim=dim,
+                    num_heads=num_heads,
+                    head_dim=head_dim,
+                    ff_dim=ff_dim,
+                    num_groups=num_groups,
+                    attn_dropout=attn_dropout,
+                    ffn_dropout=ffn_dropout,
+                    norm_type=norm_type,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.decoder = ContextDecoder(
+            dim=dim,
+            num_heads=num_heads,
+            head_dim=head_dim,
+            score_scale=score_scale,
+            attn_dropout=ctx_attn_dropout,
+        )
+
+    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h_b = self.embed_b(x_b)
+        h_y = self.embed_y(x_y).unsqueeze(1)
+
+        for layer in self.layers:
+            h_b, h_y = layer(h_b, h_y)
+
+        return self.decoder(h_b, h_y)
+
+
 class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
     """
     面向高用户数场景的更大容量实验模型。
@@ -405,6 +636,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         head_dim: int = 32,
         ff_dim: int = 768,
         score_scale: float = 8.0,
+        pilot_feature_dim: int | None = None,
         attn_dropout: float = 0.0,
         ffn_dropout: float = 0.0,
         ctx_attn_dropout: float = 0.0,
@@ -419,6 +651,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
             head_dim=head_dim,
             ff_dim=ff_dim,
             score_scale=score_scale,
+            pilot_feature_dim=pilot_feature_dim,
             attn_dropout=attn_dropout,
             ffn_dropout=ffn_dropout,
             ctx_attn_dropout=ctx_attn_dropout,
@@ -456,10 +689,28 @@ def build_model_from_config(cfg: dict) -> nn.Module:
             head_dim=int(_get_num("head_dim", 32)),
             ff_dim=int(_get_num("ff_dim", 768)),
             score_scale=float(_get_num("score_scale", 8.0)),
+            pilot_feature_dim=int(_get_num("pilot_feature_dim", 2 * int(common["pilot_len"]))),
             attn_dropout=float(_get_num("attn_dropout", 0.0)),
             ffn_dropout=float(_get_num("ffn_dropout", 0.0)),
             ctx_attn_dropout=float(_get_num("ctx_attn_dropout", 0.0)),
             norm_type=_get_str("norm_type", "layer"),
+        )
+
+    if model_name in {"grouped", "correlated", "grouped_correlated"}:
+        return GroupedHeterogeneousTransformer(
+            **common,
+            dim=int(_get_num("dim", 128)),
+            num_layers=int(_get_num("num_layers", 5)),
+            num_heads=int(_get_num("num_heads", 8)),
+            head_dim=int(_get_num("head_dim", 32)),
+            ff_dim=int(_get_num("ff_dim", 512)),
+            score_scale=float(_get_num("score_scale", 10.0)),
+            pilot_feature_dim=int(_get_num("pilot_feature_dim", 2 * int(common["pilot_len"]))),
+            num_groups=int(_get_num("num_groups", 4)),
+            attn_dropout=float(_get_num("attn_dropout", 0.0)),
+            ffn_dropout=float(_get_num("ffn_dropout", 0.0)),
+            ctx_attn_dropout=float(_get_num("ctx_attn_dropout", 0.0)),
+            norm_type=_get_str("norm_type", "batch"),
         )
 
     return HeterogeneousTransformer(
@@ -470,6 +721,7 @@ def build_model_from_config(cfg: dict) -> nn.Module:
         head_dim=int(_get_num("head_dim", 32)),
         ff_dim=int(_get_num("ff_dim", 512)),
         score_scale=float(_get_num("score_scale", 10.0)),
+        pilot_feature_dim=int(_get_num("pilot_feature_dim", 2 * int(common["pilot_len"]))),
         attn_dropout=float(_get_num("attn_dropout", 0.0)),
         ffn_dropout=float(_get_num("ffn_dropout", 0.0)),
         ctx_attn_dropout=float(_get_num("ctx_attn_dropout", 0.0)),

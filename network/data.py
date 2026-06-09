@@ -66,6 +66,16 @@ class ActivityDataGenerator:
         scale = torch.sqrt(torch.mean(x * x, dim=dims, keepdim=True) + eps)
         return x / scale
 
+    def _activity_prior_feature(self, batch_size: int) -> torch.Tensor:
+        return torch.zeros(batch_size, self.cfg.num_devices, 1, device=self.device)
+
+    def _matched_energy_feature(self, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        # Per-user matched covariance energy b_n^H C b_n is a strong activity cue.
+        energy = torch.einsum("bln,blk,bkn->bn", b.conj(), c, b).real
+        denom = (b.abs().square().sum(dim=1)).clamp_min(1e-24)
+        energy = (energy / denom).clamp_min(0.0).unsqueeze(-1).to(torch.float32)
+        return self._rms_normalize(energy)
+
     def sample_batch(self, batch_size: int, return_raw: bool = False) -> dict[str, torch.Tensor]:
         cfg = self.cfg
         bsz, n, lp, m = batch_size, cfg.num_devices, cfg.pilot_len, cfg.num_antennas
@@ -108,6 +118,10 @@ class ActivityDataGenerator:
 
         x_b = self._rms_normalize(x_b.to(torch.float32))
         x_y = self._rms_normalize(x_y.to(torch.float32))
+        x_b = torch.cat(
+            [x_b, self._matched_energy_feature(b, c), self._activity_prior_feature(bsz)],
+            dim=-1,
+        )
 
         out = {
             "x_b": x_b,  # [B, N, 2Lp]

@@ -36,3 +36,13 @@ def pm_pf_curve(
         pm, pf = pm_pf_at_threshold(probs, labels, float(th.item()))
         curve.append((float(th.item()), pm, pf))
     return curve
+
+
+@torch.no_grad()
+def best_pm_pf_threshold(
+    probs: torch.Tensor,
+    labels: torch.Tensor,
+    num_thresholds: int = 101,
+) -> tuple[float, float, float]:
+    curve = pm_pf_curve(probs, labels, num_thresholds=num_thresholds)
+    return min(curve, key=lambda item: item[1] + item[2])

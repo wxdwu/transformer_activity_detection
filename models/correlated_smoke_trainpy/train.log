@@ -1,0 +1,7 @@
+
+Command: D:\code_DL\anaconda\python.exe -
+Args: {"activity_prob": 0.1, "amp": false, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 4, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "data_mode": "correlated", "device": "cpu", "dim": 32, "epochs": 1, "eval_batches": 1, "eval_threshold": 0.5, "ff_dim": 64, "ffn_dropout": 0.0, "fixed_eval_set": true, "grad_clip": 0.0, "head_dim": 8, "log_file": "models\\correlated_smoke_trainpy\\train.log", "lr": 0.0001, "lr_decay_epochs": "", "lr_decay_factor": 0.1, "model_name": "base", "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 8, "num_devices": 100, "num_heads": 2, "num_layers": 1, "pilot_len": 8, "pmax_dbm": 23.0, "save_dir": "models\\correlated_smoke_trainpy", "score_scale": 10.0, "seed": 42, "snr_db": 20.0, "steps_per_epoch": 2, "warmup_epochs": 0}
+System: {"activity_prob": 0.1875, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "group_beta_params": [[0.085, 0.765], [0.0975, 0.5525], [0.099, 0.351], [0.07, 0.18]], "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 8, "num_devices": 100, "pilot_len": 8, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 32, "ff_dim": 64, "ffn_dropout": 0.0, "head_dim": 8, "model_name": "base", "norm_type": "batch", "num_devices": 100, "num_heads": 2, "num_layers": 1, "pilot_len": 8, "score_scale": 10.0}
+
+Epoch 001 | loss=0.477756 | PM@0.50=0.476923 | PF@0.50=0.483582 | p_mean=0.5000 | skip=0 | lr=1.00e-04

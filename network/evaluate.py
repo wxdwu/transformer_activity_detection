@@ -11,7 +11,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from network.config import apply_cli_overrides, load_experiment_config, section_namespace
-from network.data import ActivityDataGenerator, SystemConfig
+from network.data import ActivityDataGenerator as IndependentActivityDataGenerator
+from network.data import SystemConfig as IndependentSystemConfig
+from network.data_correlated import ActivityDataGenerator as CorrelatedActivityDataGenerator
+from network.data_correlated import SystemConfig as CorrelatedSystemConfig
 from network.metrics import pm_pf_curve
 from network.model import build_model_from_config
 
@@ -39,14 +42,19 @@ def main() -> None:
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
     ckpt = torch.load(ckpt_path, map_location=device)
-    sys_cfg = SystemConfig(**ckpt["system_config"])
     cfg = ckpt.get("model_config", ckpt["config"])
+    data_mode = str(ckpt.get("config", {}).get("data_mode", cfg.get("data_mode", "independent"))).lower()
+    if "group_beta_params" in ckpt["system_config"] or data_mode == "correlated":
+        sys_cfg = CorrelatedSystemConfig(**ckpt["system_config"])
+        data_gen = CorrelatedActivityDataGenerator(sys_cfg, device=device)
+    else:
+        sys_cfg = IndependentSystemConfig(**ckpt["system_config"])
+        data_gen = IndependentActivityDataGenerator(sys_cfg, device=device)
 
     model = build_model_from_config(cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
-    data_gen = ActivityDataGenerator(sys_cfg, device=device)
     all_probs = []
     all_labels = []
 

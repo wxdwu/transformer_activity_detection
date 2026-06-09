@@ -1,7 +1,20 @@
-﻿.venv/
+.venv/
 __pycache__/
 *.pyc
-checkpoints/
-checkpoints_*/
+
+# Old training outputs are local-only.
+/checkpoint/checkpoints_*/
+/checkpoint/tmp_*/
+/checkpoints/
+/checkpoints_*/
+
+# Model files are ignored by default, except artifacts under models/.
 *.pt
+!models/
+!models/**/
+!models/**/*.pt
+
+# Previously generated model run; keep local and do not upload.
+/models/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000/
+
 *.csv
