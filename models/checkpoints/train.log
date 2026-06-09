@@ -136,3 +136,4 @@ Epoch 007 | loss=0.024970 | eval_loss=0.027141 | PM@0.50=0.012286 | PF@0.50=0.02
 Epoch 008 | loss=0.025248 | eval_loss=0.025458 | PM@0.50=0.017937 | PF@0.50=0.015386 | best_th=0.41 | best_PM=0.014299 | best_PF=0.018444 | p_mean=0.1937 | skip=0 | lr=3.00e-04
 Epoch 009 | loss=0.024687 | eval_loss=0.024768 | PM@0.50=0.010189 | PF@0.50=0.022592 | best_th=0.55 | best_PM=0.011687 | best_PF=0.020556 | p_mean=0.2022 | skip=0 | lr=3.00e-04
 Epoch 010 | loss=0.024558 | eval_loss=0.025096 | PM@0.50=0.009204 | PF@0.50=0.024187 | best_th=0.65 | best_PM=0.015240 | best_PF=0.017183 | p_mean=0.2046 | skip=0 | lr=3.00e-04
+Epoch 003 | loss=0.302089 | eval_loss=0.303727 | PM@0.50=0.183653 | PF@0.50=0.398386 | best_th=0.59 | best_PM=0.345490 | best_PF=0.209804 | p_mean=0.4150 | skip=0 | lr=3.00e-04
