@@ -4,6 +4,7 @@ import json
 import math
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,10 +41,10 @@ BANDWIDTH_HZ = 10e6
 # =========================
 # Model Parameters
 # =========================
-# Manual model/save choices for the three correlated-data loss experiments:
-#   MODEL_NAME = "grouped";        SAVE_DIR = Path("models/checkpoint_grouped")
-#   MODEL_NAME = "base-dimension"; SAVE_DIR = Path("models/checkpoint_base_dimension")
-#   MODEL_NAME = "base";           SAVE_DIR = Path("models/checkpoint_base")
+# Manual model choice for the three correlated-data loss experiments:
+#   MODEL_NAME = "grouped"
+#   MODEL_NAME = "base-dimension"
+#   MODEL_NAME = "base"
 MODEL_NAME = "base"
 DIM = 128
 NUM_LAYERS = 5
@@ -61,10 +62,8 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-# SAVE_DIR = Path("models/checkpoint_grouped")
-# SAVE_DIR = Path("models/checkpoint_base_dimension")
-# SAVE_DIR = Path("models/checkpoint_base")
-SAVE_DIR = Path("models/checkpoint_grouped")
+RUN_TIMESTAMP = datetime.now().strftime("%m%d_%H%M")
+SAVE_DIR = Path("models") / f"checkpoint_{MODEL_NAME.replace('-', '_')}_{RUN_TIMESTAMP}"
 LOG_FILE = SAVE_DIR / "train.log"
 MODEL_SEED = 42
 DATA_SEED = 20260518
