@@ -49,7 +49,7 @@ class TokenBatchNorm(nn.Module):
 
 
 class TokenLayerNorm(nn.Module):
-    """large_dim 实验模型使用的 LayerNorm 变体。
+    """可选的 LayerNorm 变体。
 
     这不是论文默认设置；论文 baseline 使用 BatchNorm。
     单独封装一层是为了在不改动其余异构 Transformer 结构的情况下切换归一化方式。
@@ -618,52 +618,11 @@ class GroupedHeterogeneousTransformer(nn.Module):
         return self.decoder(h_b, h_y)
 
 
-class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
-    """
-    面向高用户数场景的更大容量实验模型。
-
-    这不是论文默认模型。它保留异构 Transformer 主体结构，
-    但增大模型容量，并在本仓库 N=400 这类实验中默认使用 LayerNorm。
-    """
-
-    def __init__(
-        self,
-        num_devices: int,
-        pilot_len: int,
-        dim: int = 192,
-        num_layers: int = 6,
-        num_heads: int = 8,
-        head_dim: int = 32,
-        ff_dim: int = 768,
-        score_scale: float = 8.0,
-        pilot_feature_dim: int | None = None,
-        attn_dropout: float = 0.0,
-        ffn_dropout: float = 0.0,
-        ctx_attn_dropout: float = 0.0,
-        norm_type: str = "layer",
-    ) -> None:
-        super().__init__(
-            num_devices=num_devices,
-            pilot_len=pilot_len,
-            dim=dim,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            head_dim=head_dim,
-            ff_dim=ff_dim,
-            score_scale=score_scale,
-            pilot_feature_dim=pilot_feature_dim,
-            attn_dropout=attn_dropout,
-            ffn_dropout=ffn_dropout,
-            ctx_attn_dropout=ctx_attn_dropout,
-            norm_type=norm_type,
-        )
-
-
 def build_model_from_config(cfg: dict) -> nn.Module:
     """根据 checkpoint 或训练配置构造模型。
 
-    "base" 默认复现论文规模的模型，除非显式覆盖参数。
-    "large_dim" 选择本仓库中更大的实验模型。
+    "base" 复现历史基础 Transformer 输入方式，只使用 2*pilot_len 特征。
+    "base-dimension" 使用当前 base 结构和 2*pilot_len+2 特征。
     """
 
     def _get_num(name: str, default: float) -> float:
@@ -679,22 +638,6 @@ def build_model_from_config(cfg: dict) -> nn.Module:
         "num_devices": cfg["num_devices"],
         "pilot_len": cfg["pilot_len"],
     }
-
-    if model_name in {"large", "large_dim", "n400"}:
-        return HeterogeneousTransformerLargeDim(
-            **common,
-            dim=int(_get_num("dim", 192)),
-            num_layers=int(_get_num("num_layers", 6)),
-            num_heads=int(_get_num("num_heads", 8)),
-            head_dim=int(_get_num("head_dim", 32)),
-            ff_dim=int(_get_num("ff_dim", 768)),
-            score_scale=float(_get_num("score_scale", 8.0)),
-            pilot_feature_dim=int(_get_num("pilot_feature_dim", 2 * int(common["pilot_len"]))),
-            attn_dropout=float(_get_num("attn_dropout", 0.0)),
-            ffn_dropout=float(_get_num("ffn_dropout", 0.0)),
-            ctx_attn_dropout=float(_get_num("ctx_attn_dropout", 0.0)),
-            norm_type=_get_str("norm_type", "layer"),
-        )
 
     if model_name in {"grouped", "correlated", "grouped_correlated"}:
         return GroupedHeterogeneousTransformer(

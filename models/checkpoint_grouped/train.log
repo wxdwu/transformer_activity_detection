@@ -1,0 +1,65 @@
+
+Command: C:\Users\26770\Desktop\correlated_activity_transformer\.venv\Scripts\python.exe network\train.py
+Args: {"activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 128, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "data_mode": "correlated", "data_seed": 20260518, "device": "cuda", "dim": 128, "epochs": 100, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_test_set": "models\\fixed_correlated_test_5000.pt", "grad_clip": 1.0, "head_dim": 32, "log_file": "models\\checkpoint_grouped\\train.log", "lr": 0.0003, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "grouped", "model_seed": 42, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "models\\checkpoint_grouped", "score_scale": 10.0, "snr_db": 20.0, "steps_per_epoch": 10000, "test_data_seed": 20260519, "test_samples": 5000, "warmup_epochs": 1, "weight_decay": 0.0}
+System: {"activity_prob": 0.1875, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "group_beta_params": [[0.085, 0.765], [0.0975, 0.5525], [0.099, 0.351], [0.07, 0.18]], "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 100, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "grouped", "norm_type": "batch", "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_feature_dim": 62, "pilot_len": 30, "score_scale": 10.0}
+Fixed test set: C:\Users\26770\Desktop\correlated_activity_transformer\models\fixed_correlated_test_5000.pt
+
+Epoch 001 | loss=0.026586 | skip=0 | lr=3.00e-04
+Epoch 002 | loss=0.023950 | skip=0 | lr=3.00e-04
+Epoch 003 | loss=0.023870 | skip=0 | lr=3.00e-04
+Epoch 004 | loss=0.023406 | skip=0 | lr=3.00e-04
+Epoch 005 | loss=0.023369 | skip=0 | lr=3.00e-04
+Epoch 006 | loss=0.023810 | skip=0 | lr=3.00e-04
+
+Command: C:\Users\26770\Desktop\correlated_activity_transformer\.venv\Scripts\python.exe network\train.py
+Args: {"activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 128, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "data_mode": "correlated", "data_seed": 20260518, "device": "cuda", "dim": 128, "epochs": 100, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_test_set": "models\\fixed_correlated_test_5000.pt", "grad_clip": 1.0, "head_dim": 32, "log_file": "models\\checkpoint_grouped\\train.log", "lr": 0.0003, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "base", "model_seed": 42, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "models\\checkpoint_grouped", "score_scale": 10.0, "snr_db": 20.0, "steps_per_epoch": 10000, "test_data_seed": 20260519, "test_samples": 5000, "warmup_epochs": 1, "weight_decay": 0.0}
+System: {"activity_prob": 0.1875, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "group_beta_params": [[0.085, 0.765], [0.0975, 0.5525], [0.099, 0.351], [0.07, 0.18]], "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 100, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_feature_dim": 60, "pilot_len": 30, "score_scale": 10.0}
+Fixed test set: C:\Users\26770\Desktop\correlated_activity_transformer\models\fixed_correlated_test_5000.pt
+
+Epoch 001 | loss=0.308667 | skip=0 | lr=3.00e-04
+Epoch 002 | loss=0.307556 | skip=0 | lr=3.00e-04
+Epoch 003 | loss=0.307874 | skip=0 | lr=3.00e-04
+Epoch 004 | loss=0.307511 | skip=0 | lr=3.00e-04
+Epoch 005 | loss=0.307521 | skip=0 | lr=3.00e-04
+Epoch 006 | loss=0.307610 | skip=0 | lr=3.00e-04
+Epoch 007 | loss=0.313321 | skip=0 | lr=3.00e-04
+Epoch 008 | loss=0.307818 | skip=0 | lr=3.00e-04
+Epoch 009 | loss=0.307713 | skip=0 | lr=3.00e-04
+Epoch 010 | loss=0.307443 | skip=0 | lr=3.00e-04
+
+Command: /home/wuxudong/.conda/envs/ct/bin/python network/train.py
+Args: {"activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 128, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "data_mode": "correlated", "data_seed": 20260518, "device": "cuda", "dim": 128, "epochs": 100, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_test_set": "models/fixed_correlated_test_5000.pt", "grad_clip": 1.0, "head_dim": 32, "log_file": "models/checkpoint_grouped/train.log", "lr": 0.0003, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "grouped", "model_seed": 42, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "models/checkpoint_grouped", "score_scale": 10.0, "snr_db": 20.0, "steps_per_epoch": 10000, "test_data_seed": 20260519, "test_samples": 5000, "warmup_epochs": 1, "weight_decay": 0.0}
+System: {"activity_prob": 0.1875, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "group_beta_params": [[0.085, 0.765], [0.0975, 0.5525], [0.099, 0.351], [0.07, 0.18]], "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 100, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "grouped", "norm_type": "batch", "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_feature_dim": 62, "pilot_len": 30, "score_scale": 10.0}
+Fixed test set: /data/wuxudong/correlated_activity_transformer/models/fixed_correlated_test_5000.pt
+
+Epoch 001 | loss=0.026533 | skip=0 | lr=3.00e-04
+Epoch 002 | loss=0.023751 | skip=0 | lr=3.00e-04
+Epoch 003 | loss=0.023667 | skip=0 | lr=3.00e-04
+Epoch 004 | loss=0.023484 | skip=0 | lr=3.00e-04
+Epoch 005 | loss=0.023295 | skip=0 | lr=3.00e-04
+Epoch 006 | loss=0.023189 | skip=0 | lr=3.00e-04
+Epoch 007 | loss=0.023185 | skip=0 | lr=3.00e-04
+Epoch 008 | loss=0.023162 | skip=0 | lr=3.00e-04
+Epoch 009 | loss=0.023168 | skip=0 | lr=3.00e-04
+Epoch 010 | loss=0.023050 | skip=0 | lr=3.00e-04
+Epoch 011 | loss=0.023020 | skip=0 | lr=3.00e-04
+Epoch 012 | loss=0.023080 | skip=0 | lr=3.00e-04
+Epoch 013 | loss=0.023073 | skip=0 | lr=3.00e-04
+Epoch 014 | loss=0.022908 | skip=0 | lr=3.00e-04
+Epoch 015 | loss=0.022962 | skip=0 | lr=3.00e-04
+Epoch 016 | loss=0.022969 | skip=0 | lr=3.00e-04
+Epoch 017 | loss=0.022890 | skip=0 | lr=3.00e-04
+Epoch 018 | loss=0.022859 | skip=0 | lr=3.00e-04
+Epoch 019 | loss=0.022872 | skip=0 | lr=3.00e-04
+Epoch 020 | loss=0.022822 | skip=0 | lr=3.00e-04
+Epoch 021 | loss=0.022858 | skip=0 | lr=3.00e-04
+Epoch 022 | loss=0.022864 | skip=0 | lr=3.00e-04
+Epoch 023 | loss=0.022805 | skip=0 | lr=3.00e-04
+Epoch 024 | loss=0.022779 | skip=0 | lr=3.00e-04
+Epoch 025 | loss=0.022828 | skip=0 | lr=3.00e-04
+Epoch 026 | loss=0.023217 | skip=0 | lr=3.00e-04
+Epoch 027 | loss=0.022829 | skip=0 | lr=3.00e-04
+Epoch 028 | loss=0.022858 | skip=0 | lr=3.00e-04

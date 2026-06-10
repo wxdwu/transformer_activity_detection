@@ -4,7 +4,6 @@ from .metrics import pm_pf_curve
 from .model import (
     GroupedHeterogeneousTransformer,
     HeterogeneousTransformer,
-    HeterogeneousTransformerLargeDim,
     build_model_from_config,
 )
 
@@ -14,6 +13,5 @@ __all__ = [
     "pm_pf_curve",
     "GroupedHeterogeneousTransformer",
     "HeterogeneousTransformer",
-    "HeterogeneousTransformerLargeDim",
     "build_model_from_config",
 ]

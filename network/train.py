@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,6 @@ from network.data import SystemConfig as IndependentSystemConfig
 from network.data_correlated import ActivityDataGenerator as CorrelatedActivityDataGenerator
 from network.data_correlated import SystemConfig as CorrelatedSystemConfig
 from network.losses import weighted_activity_loss
-from network.metrics import best_pm_pf_threshold, pm_pf_at_threshold
 from network.model import build_model_from_config
 
 
@@ -40,7 +40,11 @@ BANDWIDTH_HZ = 10e6
 # =========================
 # Model Parameters
 # =========================
-MODEL_NAME = "grouped"  # "grouped" or "base"
+# Manual model/save choices for the three correlated-data loss experiments:
+#   MODEL_NAME = "grouped";        SAVE_DIR = Path("models/checkpoint_grouped")
+#   MODEL_NAME = "base-dimension"; SAVE_DIR = Path("models/checkpoint_base_dimension")
+#   MODEL_NAME = "base";           SAVE_DIR = Path("models/checkpoint_base")
+MODEL_NAME = "base"
 DIM = 128
 NUM_LAYERS = 5
 NUM_HEADS = 8
@@ -57,12 +61,19 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = Path("models/checkpoints")
+# SAVE_DIR = Path("models/checkpoint_grouped")
+# SAVE_DIR = Path("models/checkpoint_base_dimension")
+# SAVE_DIR = Path("models/checkpoint_base")
+SAVE_DIR = Path("models/checkpoint_grouped")
 LOG_FILE = SAVE_DIR / "train.log"
-SEED = 42
-EPOCHS = 10
-STEPS_PER_EPOCH = 500
+MODEL_SEED = 42
+DATA_SEED = 20260518
+TEST_DATA_SEED = 20260519
+EPOCHS = 100
+STEPS_PER_EPOCH = 10000
 BATCH_SIZE = 128
+TEST_SAMPLES = 5000
+FIXED_TEST_SET = Path("models/fixed_correlated_test_5000.pt")
 LR = 3e-4
 WEIGHT_DECAY = 0.0
 USE_AMP = True
@@ -71,9 +82,6 @@ WARMUP_EPOCHS = 1
 GRAD_CLIP = 1.0
 LR_DECAY_EPOCHS = "90,97"
 LR_DECAY_FACTOR = 0.1
-EVAL_BATCHES = 10
-EVAL_THRESHOLD = 0.5
-FIXED_EVAL_SET = True
 
 
 def resolve_device(raw: str) -> str:
@@ -110,10 +118,14 @@ def build_args() -> SimpleNamespace:
         device=resolve_device(DEVICE),
         save_dir=SAVE_DIR,
         log_file=LOG_FILE,
-        seed=SEED,
+        model_seed=MODEL_SEED,
+        data_seed=DATA_SEED,
+        test_data_seed=TEST_DATA_SEED,
         epochs=EPOCHS,
         steps_per_epoch=STEPS_PER_EPOCH,
         batch_size=BATCH_SIZE,
+        test_samples=TEST_SAMPLES,
+        fixed_test_set=FIXED_TEST_SET,
         lr=LR,
         weight_decay=WEIGHT_DECAY,
         amp=USE_AMP,
@@ -122,9 +134,6 @@ def build_args() -> SimpleNamespace:
         grad_clip=GRAD_CLIP,
         lr_decay_epochs=LR_DECAY_EPOCHS,
         lr_decay_factor=LR_DECAY_FACTOR,
-        eval_batches=EVAL_BATCHES,
-        eval_threshold=EVAL_THRESHOLD,
-        fixed_eval_set=FIXED_EVAL_SET,
     )
 
 
@@ -156,12 +165,22 @@ def build_data_generator(
     raise ValueError(f"Unknown data_mode: {args.data_mode}")
 
 
+def uses_legacy_base_features(model_name: str) -> bool:
+    return model_name.lower() == "base"
+
+
+def pilot_feature_dim(args: SimpleNamespace) -> int:
+    if uses_legacy_base_features(args.model_name):
+        return 2 * args.pilot_len
+    return 2 * args.pilot_len + 2
+
+
 def build_model_config(args: SimpleNamespace) -> dict:
     return {
         "model_name": args.model_name,
         "num_devices": args.num_devices,
         "pilot_len": args.pilot_len,
-        "pilot_feature_dim": 2 * args.pilot_len + 2,
+        "pilot_feature_dim": pilot_feature_dim(args),
         "dim": args.dim,
         "num_layers": args.num_layers,
         "num_heads": args.num_heads,
@@ -176,6 +195,16 @@ def build_model_config(args: SimpleNamespace) -> dict:
     }
 
 
+def prepare_model_inputs(
+    batch: dict[str, torch.Tensor],
+    args: SimpleNamespace,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    x_b = batch["x_b"]
+    if uses_legacy_base_features(args.model_name):
+        x_b = x_b[..., : 2 * args.pilot_len]
+    return x_b, batch["x_y"]
+
+
 def activity_prior_for_loss(
     batch: dict[str, torch.Tensor],
     system_cfg: IndependentSystemConfig | CorrelatedSystemConfig,
@@ -183,9 +212,99 @@ def activity_prior_for_loss(
     return batch.get("activity_prior", system_cfg.activity_prob)
 
 
+def move_batch_to_device(
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+) -> dict[str, torch.Tensor]:
+    return {key: value.to(device) for key, value in batch.items()}
+
+
+def move_batch_to_cpu(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    return {key: value.detach().cpu() for key, value in batch.items()}
+
+
+def system_config_metadata(system_cfg: IndependentSystemConfig | CorrelatedSystemConfig) -> dict:
+    meta = dict(system_cfg.__dict__)
+    if "group_beta_params" in meta:
+        meta["group_beta_params"] = [list(pair) for pair in meta["group_beta_params"]]
+    return meta
+
+
+def test_cache_metadata(args: SimpleNamespace, system_cfg: IndependentSystemConfig | CorrelatedSystemConfig) -> dict:
+    return {
+        "data_mode": args.data_mode,
+        "system": system_config_metadata(system_cfg),
+        "test_samples": args.test_samples,
+        "batch_size": args.batch_size,
+        "test_data_seed": args.test_data_seed,
+    }
+
+
+def load_or_create_test_cache(
+    args: SimpleNamespace,
+    system_cfg: IndependentSystemConfig | CorrelatedSystemConfig,
+    data_gen: IndependentActivityDataGenerator | CorrelatedActivityDataGenerator,
+) -> list[dict[str, torch.Tensor]]:
+    expected_meta = test_cache_metadata(args, system_cfg)
+    path = Path(args.fixed_test_set)
+    if path.exists():
+        cache = torch.load(path, map_location="cpu", weights_only=True)
+        if cache.get("metadata") == expected_meta:
+            return cache["batches"]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    batches = []
+    num_batches = math.ceil(args.test_samples / args.batch_size)
+    for batch_idx in range(num_batches):
+        this_batch_size = min(args.batch_size, args.test_samples - batch_idx * args.batch_size)
+        torch.manual_seed(args.test_data_seed + batch_idx)
+        batches.append(move_batch_to_cpu(data_gen.sample_batch(this_batch_size)))
+    torch.save({"metadata": expected_meta, "batches": batches}, path)
+    return batches
+
+
+def train_batch_seed(args: SimpleNamespace, epoch: int, step: int) -> int:
+    batch_index = (epoch - 1) * args.steps_per_epoch + step
+    return args.data_seed + batch_index
+
+
+def evaluate_test_loss(
+    model: torch.nn.Module,
+    test_batches: list[dict[str, torch.Tensor]],
+    args: SimpleNamespace,
+    system_cfg: IndependentSystemConfig | CorrelatedSystemConfig,
+    device: torch.device,
+    amp_dtype: torch.dtype,
+    use_amp: bool,
+) -> float:
+    model.eval()
+    loss_sum = 0.0
+    sample_count = 0
+    with torch.no_grad():
+        for cpu_batch in test_batches:
+            batch = move_batch_to_device(cpu_batch, device)
+            x_b, x_y = prepare_model_inputs(batch, args)
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
+                logits, _ = model(x_b, x_y)
+                loss = weighted_activity_loss(
+                    logits=logits,
+                    targets=batch["label"],
+                    activity_prob=activity_prior_for_loss(batch, system_cfg),
+                )
+            bsz = int(batch["label"].shape[0])
+            loss_sum += float(loss.item()) * bsz
+            sample_count += bsz
+    return loss_sum / float(max(1, sample_count))
+
+
+def append_log(path: Path | None, line: str) -> None:
+    if path:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+
 def main() -> None:
     args = build_args()
-    torch.manual_seed(args.seed)
 
     device = torch.device(args.device)
     use_amp = bool(args.amp and device.type == "cuda")
@@ -199,6 +318,9 @@ def main() -> None:
     system_cfg = build_system_config(args)
     model_cfg = build_model_config(args)
     data_gen = build_data_generator(args, system_cfg, device=device)
+    test_batches = load_or_create_test_cache(args, system_cfg, data_gen)
+
+    torch.manual_seed(args.model_seed)
     model = build_model_from_config(model_cfg).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -209,17 +331,13 @@ def main() -> None:
     if args.log_file:
         args.log_file.parent.mkdir(parents=True, exist_ok=True)
         command_line = subprocess.list2cmdline([sys.executable, *sys.argv])
-        with args.log_file.open("a", encoding="utf-8") as f:
-            f.write("\n")
-            f.write(f"Command: {command_line}\n")
-            f.write(f"Args: {json.dumps(vars(args), sort_keys=True, default=str)}\n")
-            f.write(f"System: {json.dumps(system_cfg.__dict__, sort_keys=True)}\n")
-            f.write(f"Model: {json.dumps(model_cfg, sort_keys=True)}\n\n")
-
-    best_pm = float("inf")
-    eval_cache = None
-    if args.fixed_eval_set:
-        eval_cache = [data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)]
+        append_log(args.log_file, "")
+        append_log(args.log_file, f"Command: {command_line}")
+        append_log(args.log_file, f"Args: {json.dumps(vars(args), sort_keys=True, default=str)}")
+        append_log(args.log_file, f"System: {json.dumps(system_config_metadata(system_cfg), sort_keys=True)}")
+        append_log(args.log_file, f"Model: {json.dumps(model_cfg, sort_keys=True)}")
+        append_log(args.log_file, f"Fixed test set: {Path(args.fixed_test_set).resolve()}")
+        append_log(args.log_file, "")
 
     for epoch in range(1, args.epochs + 1):
         if args.warmup_epochs > 0 and epoch <= args.warmup_epochs:
@@ -235,10 +353,12 @@ def main() -> None:
         steps_done = 0
         skipped_nonfinite = 0
         pbar = tqdm(range(args.steps_per_epoch), desc=f"Epoch {epoch}/{args.epochs}", leave=False)
-        for _ in pbar:
+        for step in pbar:
+            torch.manual_seed(train_batch_seed(args, epoch, step))
             batch = data_gen.sample_batch(args.batch_size)
+            x_b, x_y = prepare_model_inputs(batch, args)
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                logits, _ = model(batch["x_b"], batch["x_y"])
+                logits, _ = model(x_b, x_y)
                 loss = weighted_activity_loss(
                     logits=logits,
                     targets=batch["label"],
@@ -268,57 +388,47 @@ def main() -> None:
             running_loss += float(loss.item())
             pbar.set_postfix(loss=f"{running_loss / max(1, steps_done):.4f}")
 
-        model.eval()
-        eval_probs = []
-        eval_labels = []
-        with torch.no_grad():
-            eval_iter = eval_cache if eval_cache is not None else [
-                data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)
-            ]
-            eval_loss_sum = 0.0
-            for batch in eval_iter:
-                with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                    logits, probs = model(batch["x_b"], batch["x_y"])
-                    eval_loss = weighted_activity_loss(
-                        logits=logits,
-                        targets=batch["label"],
-                        activity_prob=activity_prior_for_loss(batch, system_cfg),
-                    )
-                eval_probs.append(probs)
-                eval_labels.append(batch["label"])
-                eval_loss_sum += float(eval_loss.item())
-
-        probs_all = torch.cat(eval_probs, dim=0)
-        labels_all = torch.cat(eval_labels, dim=0)
-        pm, pf = pm_pf_at_threshold(probs_all, labels_all, args.eval_threshold)
-        best_th, best_pm, best_pf = best_pm_pf_threshold(probs_all, labels_all)
         avg_loss = running_loss / float(max(1, steps_done))
-        avg_eval_loss = eval_loss_sum / float(len(eval_iter))
-        mean_prob = float(probs_all.mean().item())
         summary = (
-            f"Epoch {epoch:03d} | loss={avg_loss:.6f} | eval_loss={avg_eval_loss:.6f} | "
-            f"PM@{args.eval_threshold:.2f}={pm:.6f} | PF@{args.eval_threshold:.2f}={pf:.6f} | "
-            f"best_th={best_th:.2f} | best_PM={best_pm:.6f} | best_PF={best_pf:.6f} | p_mean={mean_prob:.4f} | "
+            f"Epoch {epoch:03d} | loss={avg_loss:.6f} | "
             f"skip={skipped_nonfinite} | lr={lr_now:.2e}"
         )
         print(summary)
-        if args.log_file:
-            with args.log_file.open("a", encoding="utf-8") as f:
-                f.write(summary + "\n")
+        append_log(args.log_file, summary)
 
         ckpt = {
             "model_state": model.state_dict(),
             "config": vars(args),
             "model_config": model_cfg,
-            "system_config": system_cfg.__dict__,
+            "system_config": system_config_metadata(system_cfg),
             "epoch": epoch,
         }
         torch.save(ckpt, args.save_dir / "last.pt")
-        if pm < best_pm:
-            best_pm = pm
-            torch.save(ckpt, args.save_dir / "best_pm.pt")
 
-    print(f"Training done. Checkpoints saved in: {args.save_dir.resolve()}")
+    test_loss = evaluate_test_loss(
+        model=model,
+        test_batches=test_batches,
+        args=args,
+        system_cfg=system_cfg,
+        device=device,
+        amp_dtype=amp_dtype,
+        use_amp=use_amp,
+    )
+    final_summary = f"Final test_loss={test_loss:.6f} | test_samples={args.test_samples}"
+    print(final_summary)
+    append_log(args.log_file, final_summary)
+
+    ckpt = {
+        "model_state": model.state_dict(),
+        "config": vars(args),
+        "model_config": model_cfg,
+        "system_config": system_config_metadata(system_cfg),
+        "epoch": args.epochs,
+        "test_loss": test_loss,
+    }
+    torch.save(ckpt, args.save_dir / "last.pt")
+
+    print(f"Training done. Checkpoint saved in: {args.save_dir.resolve()}")
 
 
 if __name__ == "__main__":

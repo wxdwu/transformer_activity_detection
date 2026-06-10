@@ -1,0 +1,45 @@
+
+Command: /home/wuxudong/.conda/envs/ct/bin/python network/train.py
+Args: {"activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 128, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "data_mode": "correlated", "data_seed": 20260518, "device": "cuda", "dim": 128, "epochs": 100, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_test_set": "models/fixed_correlated_test_5000.pt", "grad_clip": 1.0, "head_dim": 32, "log_file": "models/checkpoint_base/train.log", "lr": 0.0003, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "base", "model_seed": 42, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "models/checkpoint_base", "score_scale": 10.0, "snr_db": 20.0, "steps_per_epoch": 10000, "test_data_seed": 20260519, "test_samples": 5000, "warmup_epochs": 1, "weight_decay": 0.0}
+System: {"activity_prob": 0.1875, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "group_beta_params": [[0.085, 0.765], [0.0975, 0.5525], [0.099, 0.351], [0.07, 0.18]], "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 100, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_devices": 100, "num_groups": 4, "num_heads": 8, "num_layers": 5, "pilot_feature_dim": 60, "pilot_len": 30, "score_scale": 10.0}
+Fixed test set: /data/wuxudong/correlated_activity_transformer/models/fixed_correlated_test_5000.pt
+
+Epoch 001 | loss=0.308650 | skip=0 | lr=3.00e-04
+Epoch 002 | loss=0.307922 | skip=0 | lr=3.00e-04
+Epoch 003 | loss=0.307680 | skip=0 | lr=3.00e-04
+Epoch 004 | loss=0.307473 | skip=0 | lr=3.00e-04
+Epoch 005 | loss=0.307527 | skip=0 | lr=3.00e-04
+Epoch 006 | loss=0.307633 | skip=0 | lr=3.00e-04
+Epoch 007 | loss=0.307496 | skip=0 | lr=3.00e-04
+Epoch 008 | loss=0.307635 | skip=0 | lr=3.00e-04
+Epoch 009 | loss=0.308555 | skip=0 | lr=3.00e-04
+Epoch 010 | loss=0.307539 | skip=0 | lr=3.00e-04
+Epoch 011 | loss=0.307569 | skip=0 | lr=3.00e-04
+Epoch 012 | loss=0.307768 | skip=0 | lr=3.00e-04
+Epoch 013 | loss=0.307669 | skip=0 | lr=3.00e-04
+Epoch 014 | loss=0.307811 | skip=0 | lr=3.00e-04
+Epoch 015 | loss=0.307766 | skip=0 | lr=3.00e-04
+Epoch 016 | loss=0.307785 | skip=0 | lr=3.00e-04
+Epoch 017 | loss=0.307244 | skip=0 | lr=3.00e-04
+Epoch 018 | loss=0.307540 | skip=0 | lr=3.00e-04
+Epoch 019 | loss=0.308072 | skip=0 | lr=3.00e-04
+Epoch 020 | loss=0.307732 | skip=0 | lr=3.00e-04
+Epoch 021 | loss=0.307854 | skip=0 | lr=3.00e-04
+Epoch 022 | loss=0.307573 | skip=0 | lr=3.00e-04
+Epoch 023 | loss=0.307560 | skip=0 | lr=3.00e-04
+Epoch 024 | loss=0.307536 | skip=0 | lr=3.00e-04
+Epoch 025 | loss=0.308184 | skip=0 | lr=3.00e-04
+Epoch 026 | loss=0.308150 | skip=0 | lr=3.00e-04
+Epoch 027 | loss=0.307797 | skip=0 | lr=3.00e-04
+Epoch 028 | loss=0.307678 | skip=0 | lr=3.00e-04
+Epoch 029 | loss=0.307605 | skip=0 | lr=3.00e-04
+Epoch 030 | loss=0.307466 | skip=0 | lr=3.00e-04
+Epoch 031 | loss=0.307471 | skip=0 | lr=3.00e-04
+Epoch 032 | loss=0.307582 | skip=0 | lr=3.00e-04
+Epoch 033 | loss=0.307396 | skip=0 | lr=3.00e-04
+Epoch 034 | loss=0.307490 | skip=0 | lr=3.00e-04
+Epoch 035 | loss=0.307504 | skip=0 | lr=3.00e-04
+Epoch 036 | loss=0.307552 | skip=0 | lr=3.00e-04
+Epoch 037 | loss=0.307259 | skip=0 | lr=3.00e-04
+Epoch 038 | loss=0.307280 | skip=0 | lr=3.00e-04
