@@ -1,0 +1,8 @@
+
+Command: /Users/aochen/miniconda3/envs/cat/bin/python -
+Args: {"activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 64, "cell_radius_m": 250.0, "ctx_attn_dropout": 0.0, "device": "cpu", "dim": 128, "epochs": 2, "eval_batches": 2, "eval_threshold": 0.5, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_eval_set": true, "grad_clip": 0.0, "head_dim": 32, "log_file": "checkpoint/tmp_smoke_train/train.log", "lr": 0.0001, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "base", "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 200, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "checkpoint/tmp_smoke_train", "score_scale": 10.0, "seed": 42, "snr_db": 20.0, "steps_per_epoch": 20, "warmup_epochs": 0}
+System: {"activity_prob": 0.1, "bandwidth_hz": 10000000.0, "cell_radius_m": 250.0, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 200, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_devices": 200, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "score_scale": 10.0}
+
+Epoch 001 | loss=0.250187 | PM@0.50=0.475358 | PF@0.50=0.513473 | p_mean=0.5003 | skip=0 | lr=1.00e-04
+Epoch 002 | loss=0.249919 | PM@0.50=0.492846 | PF@0.50=0.516722 | p_mean=0.5005 | skip=0 | lr=1.00e-04

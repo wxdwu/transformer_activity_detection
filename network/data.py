@@ -31,9 +31,24 @@ class ActivityDataGenerator:
         return (real + 1j * imag) / math.sqrt(2.0)
 
     def _sample_distances_m(self, batch_size: int) -> torch.Tensor:
+        # Deprecated for inter-user distances; kept for backward compatibility.
         # Uniform users in a disk: r = R * sqrt(u)
         u = torch.rand(batch_size, self.cfg.num_devices, device=self.device)
         return self.cfg.cell_radius_m * torch.sqrt(u.clamp_min(1e-8))
+
+    def _sample_positions_m(self, batch_size: int) -> torch.Tensor:
+        """Sample user positions (x,y) uniformly in a disk of radius cell_radius_m.
+
+        Returns tensor shape [B, N, 2].
+        """
+        bsz, n = batch_size, self.cfg.num_devices
+        # radius r = R * sqrt(u)
+        u = torch.rand(bsz, n, device=self.device)
+        r = self.cfg.cell_radius_m * torch.sqrt(u.clamp_min(1e-8))
+        theta = 2.0 * math.pi * torch.rand(bsz, n, device=self.device)
+        x = r * torch.cos(theta)
+        y = r * torch.sin(theta)
+        return torch.stack([x, y], dim=-1)
 
     def _large_scale_gain(self, distances_m: torch.Tensor) -> torch.Tensor:
         d_km = (distances_m / 1000.0).clamp_min(1e-3)
@@ -90,6 +105,25 @@ class ActivityDataGenerator:
             torch.full((bsz, n), cfg.activity_prob, device=self.device)
         ).to(torch.float32)
 
+        # === 用户间相关性特征（基于欧氏距离归一化到 (0,1)） ===
+        # 计算每个样本内用户两两间的距离，根据距离转换为相似度：
+        # sim_ij = 1 - (d_ij / (2*R)), 最大距离为 2R（盘的直径），然后 clamp 到 [0,1]
+        # 为简化输入，我们把每个用户的相关性描述为与其他用户相似度的平均值（不含自身）。
+        positions = self._sample_positions_m(bsz)  # [B, N, 2]
+        # pairwise distances: for batch compute (x_i - x_j)^2 + (y_i - y_j)^2
+        # result shape [B, N, N]
+        pos_exp1 = positions.unsqueeze(2)  # [B, N, 1, 2]
+        pos_exp2 = positions.unsqueeze(1)  # [B, 1, N, 2]
+        diffs = pos_exp1 - pos_exp2
+        dists = torch.sqrt((diffs * diffs).sum(dim=-1).clamp_min(0.0))  # [B, N, N]
+        sim = 1.0 - (dists / (2.0 * float(self.cfg.cell_radius_m)))
+        sim = sim.clamp(min=0.0, max=1.0)
+        # set diagonal to 0 to exclude self from average
+        sim = sim * (1.0 - torch.eye(n, device=self.device).unsqueeze(0))
+        # average over others (N-1)
+        corr = sim.sum(dim=2) / float(max(1, n - 1))  # [B, N]
+        corr = corr.to(torch.float32)
+
         # Channels H and noise W
         h = self._complex_gaussian(bsz, n, m)
         noise_var = self._batch_noise_variance(pg, a, lp)
@@ -106,7 +140,10 @@ class ActivityDataGenerator:
         c = (y @ y.conj().transpose(-1, -2)) / float(m)
         x_y = self._complex_to_real_feature(c.reshape(bsz, -1))
 
-        x_b = self._rms_normalize(x_b.to(torch.float32))
+        # Append correlation scalar as an extra feature dimension per user: [B, N, 2Lp+1]
+        corr_feat = corr.unsqueeze(-1)  # [B, N, 1]
+        x_b = torch.cat([x_b.to(torch.float32), corr_feat], dim=-1)
+        x_b = self._rms_normalize(x_b)
         x_y = self._rms_normalize(x_y.to(torch.float32))
 
         out = {

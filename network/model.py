@@ -346,8 +346,9 @@ class HeterogeneousTransformer(nn.Module):
         self.dim = dim
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
-        # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}，再用共享的 W_B^in 投影。
-        self.embed_b = nn.Linear(2 * pilot_len, dim)
+        # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}；本实现额外加入一个标量相关性特征，
+        # 因此输入维度为 2*Lp + 1。
+        self.embed_b = nn.Linear(2 * pilot_len + 1, dim)
         # 论文 Eq. (6) 和 Eq. (7)：Y 通过 vec(C) 表示，其中 C = YY^H / M，
         # 因此输入维度与基站天线数 M 无关。
         self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)

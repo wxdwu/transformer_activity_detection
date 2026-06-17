@@ -171,7 +171,16 @@ def main() -> None:
     model = build_model_from_config(model_cfg).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
-    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    # Create GradScaler in a compatible way across torch versions.
+    try:
+        if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+            # Newer torch: torch.amp.GradScaler(device_type=..., enabled=...)
+            scaler = torch.amp.GradScaler(enabled=use_scaler)
+        else:
+            # Fallback to legacy API if available
+            scaler = torch.cuda.amp.GradScaler(enabled=use_scaler)
+    except Exception:
+        scaler = None
     decay_epochs = sorted(int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip())
 
     args.save_dir.mkdir(parents=True, exist_ok=True)
