@@ -26,8 +26,12 @@ class ActivityDataGenerator:
         self.device = device
 
     def _complex_gaussian(self, *shape: int) -> torch.Tensor:
-        real = torch.randn(*shape, device=self.device)
-        imag = torch.randn(*shape, device=self.device)
+        # Generate complex gaussian on CUDA when available for this generator
+        # (better performance), otherwise on CPU. This avoids generating
+        # complex tensors on MPS which lacks full complex support.
+        dev = self.device if getattr(self.device, "type", "cpu") == "cuda" else torch.device("cpu")
+        real = torch.randn(*shape, device=dev)
+        imag = torch.randn(*shape, device=dev)
         return (real + 1j * imag) / math.sqrt(2.0)
 
     def _sample_distances_m(self, batch_size: int) -> torch.Tensor:
@@ -85,11 +89,18 @@ class ActivityDataGenerator:
         cfg = self.cfg
         bsz, n, lp, m = batch_size, cfg.num_devices, cfg.pilot_len, cfg.num_antennas
 
-        # Pilot sequences: S in C^{Lp x N}, with entries CN(0, 1/Lp).
-        # This matches AMP_Genie/test_mc.m: (randn + 1i*randn) / sqrt(2*L).
-        s = self._complex_gaussian(bsz, lp, n) / math.sqrt(float(lp))
+        # Choose backend for complex ops: use CUDA when this generator's device is CUDA,
+        # otherwise use CPU (keeps MPS free of complex ops).
+        backend = torch.device("cuda") if getattr(self.device, "type", "cpu") == "cuda" else torch.device("cpu")
 
-        distances = self._sample_distances_m(bsz)
+        # Pilot sequences: S in C^{Lp x N}, entries CN(0, 1/Lp)
+        s = (torch.randn(bsz, lp, n, device=backend) + 1j * torch.randn(bsz, lp, n, device=backend)) / math.sqrt(
+            2.0 * float(lp)
+        )
+
+        # Distances and large-scale gains on CPU
+        u = torch.rand(bsz, n, device=backend)
+        distances = self.cfg.cell_radius_m * torch.sqrt(u.clamp_min(1e-8))
         g = self._large_scale_gain(distances)
         g_min = g.min(dim=1, keepdim=True).values
         pmax_w = 10.0 ** ((cfg.pmax_dbm - 30.0) / 10.0)
@@ -100,51 +111,61 @@ class ActivityDataGenerator:
         # Scaled pilot matrix B = S G^{1/2}
         b = s * scale.unsqueeze(1)
 
-        # Activity labels a in {0,1}
-        a = torch.bernoulli(
-            torch.full((bsz, n), cfg.activity_prob, device=self.device)
-        ).to(torch.float32)
+        # Activity labels a in {0,1} on CPU
+        a = torch.bernoulli(torch.full((bsz, n), cfg.activity_prob, device=backend)).to(torch.float32)
 
-        # === 用户间相关性特征（基于欧氏距离归一化到 (0,1)） ===
-        # 计算每个样本内用户两两间的距离，根据距离转换为相似度：
-        # sim_ij = 1 - (d_ij / (2*R)), 最大距离为 2R（盘的直径），然后 clamp 到 [0,1]
-        # 为简化输入，我们把每个用户的相关性描述为与其他用户相似度的平均值（不含自身）。
-        positions = self._sample_positions_m(bsz)  # [B, N, 2]
-        # pairwise distances: for batch compute (x_i - x_j)^2 + (y_i - y_j)^2
-        # result shape [B, N, N]
-        pos_exp1 = positions.unsqueeze(2)  # [B, N, 1, 2]
-        pos_exp2 = positions.unsqueeze(1)  # [B, 1, N, 2]
+        # Positions and correlation features on CPU
+        u2 = torch.rand(bsz, n, device=backend)
+        r = self.cfg.cell_radius_m * torch.sqrt(u2.clamp_min(1e-8))
+        theta = 2.0 * math.pi * torch.rand(bsz, n, device=backend)
+        x = r * torch.cos(theta)
+        y_pos = r * torch.sin(theta)
+        positions = torch.stack([x, y_pos], dim=-1)
+        pos_exp1 = positions.unsqueeze(2)
+        pos_exp2 = positions.unsqueeze(1)
         diffs = pos_exp1 - pos_exp2
-        dists = torch.sqrt((diffs * diffs).sum(dim=-1).clamp_min(0.0))  # [B, N, N]
+        dists = torch.sqrt((diffs * diffs).sum(dim=-1).clamp_min(0.0))
         sim = 1.0 - (dists / (2.0 * float(self.cfg.cell_radius_m)))
         sim = sim.clamp(min=0.0, max=1.0)
-        # set diagonal to 0 to exclude self from average
-        sim = sim * (1.0 - torch.eye(n, device=self.device).unsqueeze(0))
-        # average over others (N-1)
-        corr = sim.sum(dim=2) / float(max(1, n - 1))  # [B, N]
+        sim = sim * (1.0 - torch.eye(n, device=backend).unsqueeze(0))
+        corr = sim.sum(dim=2) / float(max(1, n - 1))
         corr = corr.to(torch.float32)
 
-        # Channels H and noise W
-        h = self._complex_gaussian(bsz, n, m)
-        noise_var = self._batch_noise_variance(pg, a, lp)
-        w = torch.sqrt(noise_var).view(bsz, 1, 1) * self._complex_gaussian(bsz, lp, m)
+        # Channels H and noise W on CPU
+        h = (torch.randn(bsz, n, m, device=backend) + 1j * torch.randn(bsz, n, m, device=backend)) / math.sqrt(2.0)
+        if self.cfg.noise_mode == "thermal":
+            thermal = self._noise_variance()
+            noise_var = torch.full((bsz,), thermal, device=cpu, dtype=torch.float32)
+        else:
+            signal_power_per_pilot = (pg * a).sum(dim=1) / float(lp)
+            snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
+            noise_var = (snr_scale * signal_power_per_pilot).clamp_min(1e-30)
+
+        w = torch.sqrt(noise_var).view(bsz, 1, 1) * (
+            torch.randn(bsz, lp, m, device=backend) + 1j * torch.randn(bsz, lp, m, device=backend)
+        ) / math.sqrt(2.0)
 
         # Y = B A H + W
         bh = (b * a.unsqueeze(1)) @ h
         y = bh + w
 
-        # Eq. (5): per-device real/imag features for pilots
+        # Convert complex data to real-feature representations on CPU
         x_b = self._complex_to_real_feature(b.transpose(1, 2).contiguous())
-
-        # Eq. (6): vectorized sample covariance C = Y Y^H / M
         c = (y @ y.conj().transpose(-1, -2)) / float(m)
         x_y = self._complex_to_real_feature(c.reshape(bsz, -1))
 
         # Append correlation scalar as an extra feature dimension per user: [B, N, 2Lp+1]
-        corr_feat = corr.unsqueeze(-1)  # [B, N, 1]
+        # Ensure corr is on same backend before concatenation
+        corr_feat = corr.unsqueeze(-1).to(x_b.real.device)
         x_b = torch.cat([x_b.to(torch.float32), corr_feat], dim=-1)
         x_b = self._rms_normalize(x_b)
         x_y = self._rms_normalize(x_y.to(torch.float32))
+
+        # Move final real tensors to target device
+        # Move final real tensors to target device
+        x_b = x_b.to(self.device)
+        x_y = x_y.to(self.device)
+        a = a.to(self.device)
 
         out = {
             "x_b": x_b,  # [B, N, 2Lp]

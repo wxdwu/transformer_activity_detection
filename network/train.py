@@ -72,7 +72,15 @@ FIXED_EVAL_SET = True
 
 def resolve_device(raw: str) -> str:
     if raw == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        # Prefer CUDA if available, then Apple MPS on macOS, otherwise CPU
+        if torch.cuda.is_available():
+            return "cuda"
+        try:
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps"
+        except Exception:
+            pass
+        return "cpu"
     return raw
 
 
@@ -159,6 +167,8 @@ def main() -> None:
     device = torch.device(args.device)
     use_amp = bool(args.amp and device.type == "cuda")
     amp_dtype = torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
+    # autocast device_type must be 'cuda' or 'cpu' — MPS is not supported by torch.autocast
+    autocast_device = "cuda" if device.type == "cuda" else "cpu"
     use_scaler = bool(use_amp and amp_dtype == torch.float16)
     if device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -215,7 +225,7 @@ def main() -> None:
         pbar = tqdm(range(args.steps_per_epoch), desc=f"Epoch {epoch}/{args.epochs}", leave=False)
         for _ in pbar:
             batch = data_gen.sample_batch(args.batch_size)
-            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
+            with torch.autocast(device_type=autocast_device, dtype=amp_dtype, enabled=use_amp):
                 logits, _ = model(batch["x_b"], batch["x_y"])
                 loss = weighted_activity_loss(
                     logits=logits,
@@ -254,7 +264,7 @@ def main() -> None:
                 data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)
             ]
             for batch in eval_iter:
-                with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
+                with torch.autocast(device_type=autocast_device, dtype=amp_dtype, enabled=use_amp):
                     _, probs = model(batch["x_b"], batch["x_y"])
                 eval_probs.append(probs)
                 eval_labels.append(batch["label"])
