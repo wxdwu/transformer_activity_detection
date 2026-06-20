@@ -1,0 +1,12 @@
+
+Command: /Users/aochen/miniconda3/envs/cat/bin/python train.py
+Args: {"activity_mode": "correlated", "activity_prob": 0.1, "amp": true, "amp_dtype": "bf16", "attn_dropout": 0.0, "bandwidth_hz": 10000000.0, "batch_size": 128, "cell_radius_m": 500.0, "correlation_activity_strength": 0.8, "ctx_attn_dropout": 0.0, "device": "mps", "dim": 128, "epochs": 100, "eval_batches": 20, "eval_threshold": 0.5, "ff_dim": 512, "ffn_dropout": 0.0, "fixed_eval_set": true, "grad_clip": 0.0, "head_dim": 32, "log_file": "checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000/train.log", "lr": 0.0001, "lr_decay_epochs": "90,97", "lr_decay_factor": 0.1, "model_name": "base", "model_use_correlation_feature": true, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "norm_type": "batch", "num_antennas": 32, "num_devices": 200, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "pmax_dbm": 23.0, "save_dir": "checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000", "score_scale": 10.0, "seed": 42, "snr_db": 20.0, "steps_per_epoch": 2000, "use_correlation_feature": true, "warmup_epochs": 0}
+System: {"activity_mode": "correlated", "activity_prob": 0.1, "bandwidth_hz": 10000000.0, "cell_radius_m": 500.0, "correlation_activity_strength": 0.8, "noise_mode": "snr", "noise_power_dbm_hz": -169.0, "num_antennas": 32, "num_devices": 200, "pilot_len": 30, "pmax_dbm": 23.0, "snr_db": 20.0, "use_correlation_feature": true}
+Model: {"attn_dropout": 0.0, "ctx_attn_dropout": 0.0, "dim": 128, "ff_dim": 512, "ffn_dropout": 0.0, "head_dim": 32, "model_name": "base", "norm_type": "batch", "num_devices": 200, "num_heads": 8, "num_layers": 5, "pilot_len": 30, "score_scale": 10.0, "use_correlation_feature": true}
+
+Epoch 001 | loss=0.238594 | PM@0.50=0.343312 | PF@0.50=0.403242 | p_mean=0.4600 | skip=0 | lr=1.00e-04
+Epoch 002 | loss=0.226001 | PM@0.50=0.323603 | PF@0.50=0.383563 | p_mean=0.4473 | skip=0 | lr=1.00e-04
+Epoch 003 | loss=0.221023 | PM@0.50=0.313415 | PF@0.50=0.372207 | p_mean=0.4391 | skip=0 | lr=1.00e-04
+Epoch 004 | loss=0.217981 | PM@0.50=0.301914 | PF@0.50=0.373808 | p_mean=0.4370 | skip=0 | lr=1.00e-04
+Epoch 005 | loss=0.215699 | PM@0.50=0.295801 | PF@0.50=0.365705 | p_mean=0.4305 | skip=0 | lr=1.00e-04
+Epoch 006 | loss=0.213406 | PM@0.50=0.292196 | PF@0.50=0.361874 | p_mean=0.4260 | skip=0 | lr=1.00e-04

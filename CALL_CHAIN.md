@@ -519,3 +519,11 @@ USE_CORRELATION_FEATURE = True
 这对应用户活跃具有空间相关性，且 Transformer 的 `x_b` 每个用户 token 额外包含一个相关性摘要特征。
 
 两组实验需要分别训练 checkpoint，再分别运行评估脚本比较 PM/PF 曲线。不要把旧 checkpoint 直接加载到输入维度不同的新模型中。
+
+260620:
+1、消融对比：
+train.py line 35-36 # 数据里是否加入活跃相关性，模型输入里是否加入相关性特征
+activity_mode="independent", use_correlation_feature=False 
+activity_mode="correlated", use_correlation_feature=False 
+activity_mode="correlated", use_correlation_feature=True
+attention: train.py line 59 change save path
