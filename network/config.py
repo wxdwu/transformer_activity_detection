@@ -21,12 +21,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "num_antennas": 32,
             "pilot_len": 8,
             "activity_prob": 0.1,
-            "cell_radius_m": 250.0,
+            "cell_radius_m": 500.0,
             "noise_power_dbm_hz": -169.0,
             "bandwidth_hz": 10e6,
             "pmax_dbm": 23.0,
             "noise_mode": "snr",
             "snr_db": 20.0,
+            "activity_mode": "correlated",
+            "use_correlation_feature": True,
+            "correlation_activity_strength": 0.8,
         },
         "model": {
             "model_name": "base",
@@ -192,6 +195,7 @@ def model_config_from_experiment(cfg: dict[str, Any]) -> dict[str, Any]:
     model_cfg = dict(train_cfg["model"])
     model_cfg["num_devices"] = train_cfg["system"]["num_devices"]
     model_cfg["pilot_len"] = train_cfg["system"]["pilot_len"]
+    model_cfg.setdefault("use_correlation_feature", train_cfg["system"].get("use_correlation_feature", True))
     return {k: v for k, v in model_cfg.items() if v is not None}
 
 

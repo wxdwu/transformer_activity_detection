@@ -8,11 +8,14 @@ This repo reproduces the core part of:
 Scope of this version:
 
 - Implement transformer-based active user/device detection only.
-- Do **not** include user correlation / event-driven co-activity module yet.
+- Include a lightweight spatial-correlation extension for event-driven co-activity.
 
 ## Files
 
 - `network/data.py`: system model based synthetic data generation (`Y, B, a`) and feature construction.
+  - users are sampled in a circular area
+  - pairwise distance is mapped to a normalized spatial correlation in `[0,1]`
+  - correlated activity mode lets active seed users trigger nearby/correlated users
 - `network/model.py`: heterogeneous transformer:
   - initial embedding layer
   - heterogeneous encoder layers
@@ -29,6 +32,7 @@ Scope of this version:
 
 - System model Eq. (1): implemented in `ActivityDataGenerator.sample_batch`.
 - Input features Eq. (5)-(6): real/imag concatenation for pilots and covariance vectorization for received signal.
+- Correlation extension: when `use_correlation_feature=True`, each user pilot token adds one scalar spatial-correlation feature, so `x_b` changes from `[B,N,2Lp]` to `[B,N,2Lp+1]`.
 - Initial embedding Eq. (7): separate projection for pilot tokens and signal token.
 - Encoding Eq. (8)-(19): heterogeneous MHA + FFN with residual and normalization.
 - Decoding Eq. (24)-(26): context attention + matching score + sigmoid probability.
@@ -78,4 +82,4 @@ Output file:
 - Some simulator details are engineering defaults (still physically consistent):
   - finite-sample synthetic generation each step (instead of pre-generated large fixed dataset)
   - batch normalization implemented with PyTorch `BatchNorm1d` over token features
-- These choices keep the code stable and easy to extend for your next step (activity correlation module).
+- The default system now uses a 500 m circular area and correlated activity labels. Set `activity_mode="independent"` and `use_correlation_feature=false` for a baseline ablation.

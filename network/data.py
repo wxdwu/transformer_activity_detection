@@ -12,12 +12,15 @@ class SystemConfig:
     num_antennas: int = 32
     pilot_len: int = 30
     activity_prob: float = 0.1
-    cell_radius_m: float = 250.0
+    cell_radius_m: float = 500.0
     noise_power_dbm_hz: float = -169.0
     bandwidth_hz: float = 10e6
     pmax_dbm: float = 23.0
     noise_mode: str = "snr"
     snr_db: float = 20.0
+    activity_mode: str = "correlated"
+    use_correlation_feature: bool = True
+    correlation_activity_strength: float = 0.8
 
 
 class ActivityDataGenerator:
@@ -53,6 +56,39 @@ class ActivityDataGenerator:
         x = r * torch.cos(theta)
         y = r * torch.sin(theta)
         return torch.stack([x, y], dim=-1)
+
+    def _correlation_from_positions(self, positions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute pairwise spatial correlation and per-user summary features.
+
+        The maximum possible distance inside a disk of radius R is 2R, so
+        corr(i,j)=1-d(i,j)/(2R) maps distances into [0,1].
+        """
+        n = positions.shape[1]
+        diffs = positions.unsqueeze(2) - positions.unsqueeze(1)
+        dists = torch.sqrt((diffs * diffs).sum(dim=-1).clamp_min(0.0))
+        max_dist = max(2.0 * float(self.cfg.cell_radius_m), 1e-12)
+        sim = (1.0 - dists / max_dist).clamp(min=0.0, max=1.0)
+        eye = torch.eye(n, device=positions.device, dtype=sim.dtype).unsqueeze(0)
+        sim = sim * (1.0 - eye)
+        corr_summary = sim.sum(dim=2) / float(max(1, n - 1))
+        return sim.to(torch.float32), corr_summary.to(torch.float32)
+
+    def _sample_activity(self, sim: torch.Tensor) -> torch.Tensor:
+        """Sample activity labels, optionally driven by spatial correlation."""
+        cfg = self.cfg
+        bsz, n, _ = sim.shape
+        base_prob = float(cfg.activity_prob)
+        seeds = torch.bernoulli(torch.full((bsz, n), base_prob, device=sim.device)).to(torch.float32)
+        if cfg.activity_mode == "independent":
+            return seeds
+        if cfg.activity_mode != "correlated":
+            raise ValueError(f"Unknown activity_mode: {cfg.activity_mode}")
+
+        denom = sim.sum(dim=2).clamp_min(1e-12)
+        neighbor_activity = (sim @ seeds.unsqueeze(-1)).squeeze(-1) / denom
+        strength = float(max(0.0, min(1.0, cfg.correlation_activity_strength)))
+        corr_prob = ((1.0 - strength) * base_prob + strength * neighbor_activity).clamp(0.0, 1.0)
+        return torch.bernoulli(corr_prob).to(torch.float32)
 
     def _large_scale_gain(self, distances_m: torch.Tensor) -> torch.Tensor:
         d_km = (distances_m / 1000.0).clamp_min(1e-3)
@@ -93,14 +129,16 @@ class ActivityDataGenerator:
         # otherwise use CPU (keeps MPS free of complex ops).
         backend = torch.device("cuda") if getattr(self.device, "type", "cpu") == "cuda" else torch.device("cpu")
 
+        positions = self._sample_positions_m(bsz).to(backend)
+        distances = torch.linalg.norm(positions, dim=-1)
+        corr_matrix, corr = self._correlation_from_positions(positions)
+
         # Pilot sequences: S in C^{Lp x N}, entries CN(0, 1/Lp)
         s = (torch.randn(bsz, lp, n, device=backend) + 1j * torch.randn(bsz, lp, n, device=backend)) / math.sqrt(
             2.0 * float(lp)
         )
 
-        # Distances and large-scale gains on CPU
-        u = torch.rand(bsz, n, device=backend)
-        distances = self.cfg.cell_radius_m * torch.sqrt(u.clamp_min(1e-8))
+        # Distances from the base station and large-scale gains.
         g = self._large_scale_gain(distances)
         g_min = g.min(dim=1, keepdim=True).values
         pmax_w = 10.0 ** ((cfg.pmax_dbm - 30.0) / 10.0)
@@ -111,31 +149,15 @@ class ActivityDataGenerator:
         # Scaled pilot matrix B = S G^{1/2}
         b = s * scale.unsqueeze(1)
 
-        # Activity labels a in {0,1} on CPU
-        a = torch.bernoulli(torch.full((bsz, n), cfg.activity_prob, device=backend)).to(torch.float32)
-
-        # Positions and correlation features on CPU
-        u2 = torch.rand(bsz, n, device=backend)
-        r = self.cfg.cell_radius_m * torch.sqrt(u2.clamp_min(1e-8))
-        theta = 2.0 * math.pi * torch.rand(bsz, n, device=backend)
-        x = r * torch.cos(theta)
-        y_pos = r * torch.sin(theta)
-        positions = torch.stack([x, y_pos], dim=-1)
-        pos_exp1 = positions.unsqueeze(2)
-        pos_exp2 = positions.unsqueeze(1)
-        diffs = pos_exp1 - pos_exp2
-        dists = torch.sqrt((diffs * diffs).sum(dim=-1).clamp_min(0.0))
-        sim = 1.0 - (dists / (2.0 * float(self.cfg.cell_radius_m)))
-        sim = sim.clamp(min=0.0, max=1.0)
-        sim = sim * (1.0 - torch.eye(n, device=backend).unsqueeze(0))
-        corr = sim.sum(dim=2) / float(max(1, n - 1))
-        corr = corr.to(torch.float32)
+        # Activity labels a in {0,1}. In correlated mode, active seed users
+        # increase the activation probability of spatially correlated users.
+        a = self._sample_activity(corr_matrix)
 
         # Channels H and noise W on CPU
         h = (torch.randn(bsz, n, m, device=backend) + 1j * torch.randn(bsz, n, m, device=backend)) / math.sqrt(2.0)
         if self.cfg.noise_mode == "thermal":
             thermal = self._noise_variance()
-            noise_var = torch.full((bsz,), thermal, device=cpu, dtype=torch.float32)
+            noise_var = torch.full((bsz,), thermal, device=backend, dtype=torch.float32)
         else:
             signal_power_per_pilot = (pg * a).sum(dim=1) / float(lp)
             snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
@@ -154,21 +176,21 @@ class ActivityDataGenerator:
         c = (y @ y.conj().transpose(-1, -2)) / float(m)
         x_y = self._complex_to_real_feature(c.reshape(bsz, -1))
 
-        # Append correlation scalar as an extra feature dimension per user: [B, N, 2Lp+1]
-        # Ensure corr is on same backend before concatenation
-        corr_feat = corr.unsqueeze(-1).to(x_b.real.device)
-        x_b = torch.cat([x_b.to(torch.float32), corr_feat], dim=-1)
-        x_b = self._rms_normalize(x_b)
+        x_b = self._rms_normalize(x_b.to(torch.float32))
+        if cfg.use_correlation_feature:
+            # Append one spatial-correlation summary scalar per user:
+            # [B, N, 2Lp] -> [B, N, 2Lp+1].
+            corr_feat = corr.unsqueeze(-1).to(device=x_b.device, dtype=x_b.dtype)
+            x_b = torch.cat([x_b, corr_feat], dim=-1)
         x_y = self._rms_normalize(x_y.to(torch.float32))
 
-        # Move final real tensors to target device
         # Move final real tensors to target device
         x_b = x_b.to(self.device)
         x_y = x_y.to(self.device)
         a = a.to(self.device)
 
         out = {
-            "x_b": x_b,  # [B, N, 2Lp]
+            "x_b": x_b,  # [B, N, 2Lp] or [B, N, 2Lp+1] with correlation feature
             "x_y": x_y,  # [B, 2Lp^2]
             "label": a,  # [B, N]
         }
@@ -182,6 +204,9 @@ class ActivityDataGenerator:
                     "beta": g,  # [B, N], large-scale fading gain
                     "h": h,  # [B, N, M], complex (ground-truth)
                     "noise_var": noise_var.to(dtype=torch.float32),  # [B], per-sample noise variance
+                    "positions": positions.to(dtype=torch.float32),  # [B, N, 2], user coordinates in meters
+                    "corr_matrix": corr_matrix,  # [B, N, N], pairwise spatial correlation in [0,1]
+                    "corr_feature": corr,  # [B, N], per-user average spatial correlation
                 }
             )
         return out

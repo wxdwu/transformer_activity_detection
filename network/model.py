@@ -329,6 +329,7 @@ class HeterogeneousTransformer(nn.Module):
         self,
         num_devices: int,
         pilot_len: int,
+        use_correlation_feature: bool = True,
         dim: int = 128,
         num_layers: int = 5,
         num_heads: int = 8,
@@ -343,12 +344,14 @@ class HeterogeneousTransformer(nn.Module):
         super().__init__()
         self.num_devices = num_devices
         self.pilot_len = pilot_len
+        self.use_correlation_feature = use_correlation_feature
         self.dim = dim
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
-        # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}；本实现额外加入一个标量相关性特征，
-        # 因此输入维度为 2*Lp + 1。
-        self.embed_b = nn.Linear(2 * pilot_len + 1, dim)
+        # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}。启用空间相关性建模时，
+        # 本实现额外加入一个标量相关性特征，因此输入维度为 2*Lp + 1。
+        b_input_dim = 2 * pilot_len + (1 if use_correlation_feature else 0)
+        self.embed_b = nn.Linear(b_input_dim, dim)
         # 论文 Eq. (6) 和 Eq. (7)：Y 通过 vec(C) 表示，其中 C = YY^H / M，
         # 因此输入维度与基站天线数 M 无关。
         self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)
@@ -377,7 +380,8 @@ class HeterogeneousTransformer(nn.Module):
         )
 
     def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # x_b: [B, N, 2Lp]，保存设备导频的实部/虚部特征。
+        # x_b: [B, N, 2Lp] 或 [B, N, 2Lp+1]，保存设备导频的实部/虚部特征，
+        # 可选最后一维为空间相关性摘要。
         # x_y: [B, 2Lp^2]，保存向量化协方差的实部/虚部特征。
         h_b = self.embed_b(x_b)
         h_y = self.embed_y(x_y).unsqueeze(1)
@@ -400,6 +404,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         self,
         num_devices: int,
         pilot_len: int,
+        use_correlation_feature: bool = True,
         dim: int = 192,
         num_layers: int = 6,
         num_heads: int = 8,
@@ -414,6 +419,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         super().__init__(
             num_devices=num_devices,
             pilot_len=pilot_len,
+            use_correlation_feature=use_correlation_feature,
             dim=dim,
             num_layers=num_layers,
             num_heads=num_heads,
@@ -446,6 +452,7 @@ def build_model_from_config(cfg: dict) -> nn.Module:
     common = {
         "num_devices": cfg["num_devices"],
         "pilot_len": cfg["pilot_len"],
+        "use_correlation_feature": bool(cfg.get("use_correlation_feature", True)),
     }
 
     if model_name in {"large", "large_dim", "n400"}:

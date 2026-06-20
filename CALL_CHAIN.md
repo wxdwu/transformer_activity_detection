@@ -1,146 +1,521 @@
-# 调用链与文件说明（项目概览）
+# 调用链与文件说明
 
-本文档概述仓库“Correlated-Activation”的主要执行流程（call chain），并简要说明关键文件/模块的职责，方便快速定位训练、推断、评估与传统方法比较的实现位置。
+本文档按当前代码版本说明从数据生成、相关性建模、Transformer 前向、训练、评估到信道估计对照的主要调用链。
 
-**注**：下列路径均为工作区相对路径。
+路径均为仓库相对路径。
 
-## 1. 入口脚本
-- **训练**：[network/train.py](network/train.py#L1)
-  - 构建训练参数（`build_args()`）并生成 `SystemConfig`、模型配置。
-  - 使用 `ActivityDataGenerator`（来自 [network/data.py](network/data.py#L1)）生成训练/评估数据批次。
-  - 使用 `build_model_from_config`（来自 [network/model.py](network/model.py#L1)）创建模型并移动到设备。
-  - 前向：模型接收 `x_b`（设备导频特征）和 `x_y`（接收信号协方差特征），返回 `logits, probs`。
-  - 损失：调用 [network/losses.py](network/losses.py#L1) 中的 `weighted_activity_loss` 计算加权二元交叉熵（适应稀疏活动概率）。
-  - 优化步骤、混合精度、学习率调度、检查点保存。
+## 1. 总体流程
 
-- **评估**：[network/evaluate.py](network/evaluate.py#L1)
-  - 从 checkpoint 加载模型参数、构建模型与 `ActivityDataGenerator`。
-  - 运行若干批次得到 `probs` 与 `labels`，使用 [network/metrics.py](network/metrics.py#L1) 计算 PM/PF 曲线并导出 CSV。
+当前工程的核心目标是基于 Heterogeneous Transformer 做用户活动检测，并在原始输入 `x_b, x_y` 的基础上加入空间相关性信息。
 
-## 2. 数据生成与预处理
-- [network/data.py](network/data.py#L1)
-  - `SystemConfig`：系统参数容器（用户数 N、天线 M、导频长度、噪声模式、SNR 等）。
-  - `ActivityDataGenerator.sample_batch()`：按物理信道模型生成复杂导频 `s`、大尺度衰落 `g`、缩放导频 `b`、活动标签、信道 `h`、接收信号 `y`。
-  - 生成用于模型输入的实部/虚部拼接特征 `x_b`（每用户导频）和 `x_y`（向量化协方差），并做 RMS 归一化。
+训练主链路如下：
 
-## 3. 模型（神经网络）
-- [network/model.py](network/model.py#L1)
-  - 实现论文的 Heterogeneous Transformer：
-    - `embed_b` / `embed_y`：分别把导频 token 与接收协方差 token 映射到嵌入空间。
-    - 多层 `HeterogeneousEncoderLayer`（含 `HeterogeneousMHA` 与 `HeterogeneousFFN`），分别对设备 token 与接收 token 使用不同的投影/FFN/归一化参数。
-    - `ContextDecoder`：将最终的接收 token 用作 query，计算 context 并对每个设备输出匹配 logits，再用 sigmoid 得到活动概率 `probs`。
-  - 提供 `build_model_from_config(cfg)` 工厂函数，支持不同规模（baseline 与 large_dim）。
+1. `network/train.py`
+2. 构造 `SystemConfig` 与 `model_cfg`
+3. `ActivityDataGenerator.sample_batch()` 生成 `x_b, x_y, label`
+4. `build_model_from_config()` 构造 Transformer
+5. `model(x_b, x_y)` 输出 `logits, probs`
+6. `weighted_activity_loss(logits, label)` 计算损失
+7. 反向传播、评估 PM/PF、保存 checkpoint
 
-## 4. 损失与指标
-- [network/losses.py](network/losses.py#L1)
-  - `weighted_activity_loss`：对稀疏活动分布加权的 BCE 损失（论文式权重）。
-- [network/metrics.py](network/metrics.py#L1)
-  - `pm_pf_at_threshold`、`pm_pf_curve`：计算 Miss Prob (PM) 与 False alarm (PF) 指标与曲线。
+评估与对照链路如下：
 
-## 5. 传统方法与对照（非神经网络）
-- `CE_methods/` 目录：实现并比较经典的活动检测与信道估计方法。
-  - [CE_methods/estimators.py](CE_methods/estimators.py#L1)：
-    - `active_indices_from_probs`：把概率转为活跃索引（阈值或 top-k）。
-    - `lmmse_channel_estimate`, `lmmse_formula_estimate`：基于检测集合做 LMMSE 信道估计。
-    - 多个 AMP / CAMP 的实现（`thresh_prime_thresh_complex_gaussian`, `noisy_camp_mmse` 等），用于对照实验。
-  - [CE_methods/compare.py](CE_methods/compare.py#L1)（及其它同目录脚本）：负责把神经网络输出与传统方法的结果进行比较、报告与可视化。
+1. `network/evaluate.py` 加载 checkpoint，计算 PM/PF 曲线
+2. `CE_methods/compare.py` 加载 checkpoint，使用 Transformer 概率辅助 AMP/LMMSE 等信道估计方法
+3. `plot/plot_amp_nmse_vs_iter.py` 可视化 AMP 迭代 NMSE
 
-## 6. Matlab 仿真参考实现
-- `AMP_Genie/` 与 `AMP_liuliang/`：包含若干 Matlab 脚本（`.m`），用于对照传统 AMP 实验和生成参考数据/报告（如 `CAMP_Genie.m` 等）。
+## 2. 配置入口
 
-## 7. 配置管理与实用脚本
-- [network/config.py](network/config.py#L1)
-  - 默认实验配置 `DEFAULT_CONFIG` 与 `load_experiment_config()`。
-  - `section_namespace`、`apply_cli_overrides`：将 JSON 配置与 CLI 参数统一为 Namespace，供 `train.py` / `evaluate.py` 使用。
+### 训练脚本常量
 
-- `plot/` 目录：包含绘图脚本，例如 `plot_amp_nmse_vs_iter.py`、`plot_loss_curve.py`，用于把实验结果可视化。
+当前 `network/train.py` 主要使用文件顶部的常量作为训练配置：
 
-## 8. 检查点与输出
-- `checkpoint/`：训练过程中保存的 checkpoint（`last.pt`, `best_pm.pt` 等）和实验报告文本。
+- `ACTIVITY_MODE`
+- `USE_CORRELATION_FEATURE`
+- `CORRELATION_ACTIVITY_STRENGTH`
+- `CELL_RADIUS_M`
+- `ACTIVITY_PROB`
+- `N`, `M`, `LP`
 
-## 9. 典型调用链（从训练到评估）
-1. `python network/train.py`（或在 IDE 中运行 `main()`）
-2. `train.py` 调用 `build_args()`，构建 `SystemConfig`（`network/data.py`）与模型配置（`network/config.py` / 内联常量）。
-3. 创建 `ActivityDataGenerator` 并在每个训练 step 调用 `sample_batch()` 生成 `x_b, x_y, label`。
-4. 调用 `build_model_from_config()` 构造模型（`network/model.py`），把输入送入模型得到 `logits, probs`。
-5. 计算 `weighted_activity_loss(logits, label)` 并反向传播、优化参数；按 epoch 保存 checkpoint。
-6. 使用 `network/evaluate.py` 加载 checkpoint，重建模型与 `ActivityDataGenerator`，批量推理，得到概率与标签，计算 PM/PF 曲线并写入 CSV。
-7. 如需对照实验，使用 `CE_methods/` 中的函数把网络 `probs` 转为索引，进行 LMMSE 或 AMP 信道估计，并把结果写入报告文件。
+位置：
 
-## 10. 快速文件索引（常查）
-- 训练入口：[network/train.py](network/train.py#L1)
-- 模型实现：[network/model.py](network/model.py#L1)
-- 数据生成：[network/data.py](network/data.py#L1)
-- 损失：[network/losses.py](network/losses.py#L1)
-- 指标：[network/metrics.py](network/metrics.py#L1)
-- 配置管理：[network/config.py](network/config.py#L1)
-- 评估脚本：[network/evaluate.py](network/evaluate.py#L1)
-- 传统方法：[CE_methods/estimators.py](CE_methods/estimators.py#L1)
+- `network/train.py`
+
+典型消融设置：
+
+```python
+ACTIVITY_MODE = "independent"
+USE_CORRELATION_FEATURE = False
+```
+
+相关性增强设置：
+
+```python
+ACTIVITY_MODE = "correlated"
+USE_CORRELATION_FEATURE = True
+```
+
+### 共享默认配置
+
+`network/config.py` 中的 `DEFAULT_CONFIG` 供 `network/evaluate.py`、`network/compare_active_indices.py`、`plot/plot_amp_nmse_vs_iter.py` 等脚本读取，也作为没有 `config.json` 时的默认配置。
+
+相关字段在：
+
+- `network/config.py`
+
+包括：
+
+- `network_train.system.activity_mode`
+- `network_train.system.use_correlation_feature`
+- `network_train.system.correlation_activity_strength`
+- `network_train.system.cell_radius_m`
+
+注意：仓库根目录目前没有 `config.json`，所以默认会使用 `network/config.py` 里的 `DEFAULT_CONFIG`。
+
+## 3. 数据生成调用链
+
+入口：
+
+- `network/data.py`
+- `ActivityDataGenerator.sample_batch(batch_size, return_raw=False)`
+
+主要步骤：
+
+1. 读取 `SystemConfig`
+2. 在半径 `cell_radius_m` 的圆形区域内采样用户二维位置 `positions`
+3. 由用户位置计算到基站距离 `distances`
+4. 由用户间距离计算相关性矩阵 `corr_matrix`
+5. 根据 `activity_mode` 生成活动标签 `a`
+6. 生成导频 `s`、大尺度衰落 `g`、发射功率控制 `p`、缩放导频 `b`
+7. 生成信道 `h` 和噪声 `w`
+8. 生成接收信号 `y = B A H + W`
+9. 构造模型输入 `x_b, x_y`
+10. 返回 batch 字典
+
+### 用户位置
+
+函数：
+
+- `_sample_positions_m(batch_size)`
+
+输出：
+
+- `positions`: `[B, N, 2]`
+
+采样方式为圆盘均匀分布：
+
+- `r = R * sqrt(u)`
+- `theta ~ Uniform(0, 2pi)`
+
+其中 `R = cell_radius_m`，当前默认值为 `500.0` 米。
+
+### 空间相关性
+
+函数：
+
+- `_correlation_from_positions(positions)`
+
+对任意两个用户 `i, j`，先计算欧氏距离 `d(i,j)`，再归一化为：
+
+```text
+corr(i,j) = 1 - d(i,j) / (2R)
+```
+
+并裁剪到 `[0,1]`。由于圆形区域内最大用户间距离为 `2R`，该归一化与 500 米区域半径一致。
+
+输出：
+
+- `corr_matrix`: `[B, N, N]`
+- `corr_feature`: `[B, N]`
+
+其中 `corr_feature` 是每个用户与其他用户相关性的平均值，用作额外输入特征。
+
+### 活跃标签
+
+函数：
+
+- `_sample_activity(sim)`
+
+两种模式：
+
+- `activity_mode="independent"`：每个用户独立按 `activity_prob` 采样。
+- `activity_mode="correlated"`：先生成 seed 活跃用户，再用相关性矩阵计算邻居活跃强度，使空间相关用户更容易同时活跃。
+
+相关强度由：
+
+- `correlation_activity_strength`
+
+控制。当前默认值为 `0.8`。
+
+### Transformer 输入特征
+
+`x_b` 来自缩放导频矩阵 `b` 的实部/虚部拼接：
+
+```text
+x_b baseline: [B, N, 2Lp]
+```
+
+如果：
+
+```python
+use_correlation_feature = True
+```
+
+则在最后一维追加 `corr_feature`：
+
+```text
+x_b correlation-enhanced: [B, N, 2Lp + 1]
+```
+
+`x_y` 来自接收信号协方差：
+
+```text
+C = Y Y^H / M
+x_y = concat(real(vec(C)), imag(vec(C)))
+x_y: [B, 2Lp^2]
+```
+
+返回的基础 batch：
+
+- `x_b`
+- `x_y`
+- `label`
+
+如果 `return_raw=True`，额外返回：
+
+- `y`
+- `b`
+- `s`
+- `pg`
+- `beta`
+- `h`
+- `noise_var`
+- `positions`
+- `corr_matrix`
+- `corr_feature`
+
+## 4. 模型构建调用链
+
+入口：
+
+- `network/model.py`
+- `build_model_from_config(cfg)`
+
+该函数根据 `cfg["model_name"]` 构造：
+
+- `HeterogeneousTransformer`
+- `HeterogeneousTransformerLargeDim`
+
+共同关键参数：
+
+- `num_devices`
+- `pilot_len`
+- `use_correlation_feature`
+- `dim`
+- `num_layers`
+- `num_heads`
+- `head_dim`
+- `ff_dim`
+- `norm_type`
+
+### 输入维度匹配
+
+模型中 `embed_b` 的输入维度由 `use_correlation_feature` 决定：
+
+```python
+b_input_dim = 2 * pilot_len + (1 if use_correlation_feature else 0)
+```
+
+因此：
+
+- `use_correlation_feature=False` 时，模型期望 `x_b[..., 2Lp]`
+- `use_correlation_feature=True` 时，模型期望 `x_b[..., 2Lp+1]`
+
+训练、评估和 checkpoint 必须保持这个字段一致。旧 checkpoint 如果是无相关性特征训练的，不能直接加载到启用相关性特征的新模型中。
+
+## 5. Transformer 前向调用链
+
+入口：
+
+- `HeterogeneousTransformer.forward(x_b, x_y)`
+
+步骤：
+
+1. `embed_b(x_b)` 将 N 个用户导频 token 投影到 `D` 维
+2. `embed_y(x_y).unsqueeze(1)` 将接收协方差投影成 1 个接收 token
+3. 多层 `HeterogeneousEncoderLayer` 提取用户 token 与接收 token 间的上下文关系
+4. `ContextDecoder` 输出每个用户的活动 logits 和概率
+
+输出：
+
+- `logits`: `[B, N]`
+- `probs`: `[B, N]`
+
+## 6. 异构编码器内部链路
+
+文件：
+
+- `network/model.py`
+
+主要类：
+
+- `HeterogeneousEncoderLayer`
+- `HeterogeneousMHA`
+- `HeterogeneousFFN`
+
+每层执行：
+
+1. 对用户 token 使用一套 Q/K/V 投影
+2. 对接收 token 使用另一套 Q/K/V 投影
+3. 拼接用户 token 和接收 token 做 scaled dot-product attention
+4. 根据 token 类型使用不同输出投影
+5. 残差连接和归一化
+6. 用户 token 与接收 token 分别进入各自 FFN
+7. 再次残差连接和归一化
+
+这就是 Heterogeneous Transformer 的核心：不同物理意义的 token 使用不同参数，但仍在同一个 attention 空间里交互。
+
+## 7. 解码器调用链
+
+文件：
+
+- `network/model.py`
+- `ContextDecoder`
+
+步骤：
+
+1. 最终接收 token 作为 query
+2. 用户 token 和接收 token 共同作为 key/value
+3. 计算 context vector
+4. 将 context 与每个用户 token 做匹配
+5. 输出每用户 `logits`
+6. `sigmoid(logits)` 得到活动概率 `probs`
+
+## 8. 训练调用链
+
+入口：
+
+- `network/train.py`
+
+主要流程：
+
+1. `build_args()` 读取文件顶部常量
+2. `build_system_config(args)` 构造 `SystemConfig`
+3. `build_model_config(args)` 构造模型配置
+4. `ActivityDataGenerator(system_cfg, device)` 创建数据生成器
+5. `build_model_from_config(model_cfg)` 创建模型
+6. 每个 step 调用 `data_gen.sample_batch(args.batch_size)`
+7. 前向得到 `logits, probs`
+8. `weighted_activity_loss(logits, targets, activity_prob)` 计算损失
+9. AdamW 优化
+10. 每个 epoch 评估 PM/PF
+11. 保存：
+    - `last.pt`
+    - `best_pm.pt`
+
+checkpoint 中保存：
+
+- `model_state`
+- `config`
+- `model_config`
+- `system_config`
+- `epoch`
+
+其中 `model_config.use_correlation_feature` 和 `system_config.use_correlation_feature` 对后续加载很重要。
+
+## 9. 损失与指标
+
+### 损失
+
+文件：
+
+- `network/losses.py`
+
+函数：
+
+- `weighted_activity_loss`
+
+作用：
+
+- 对稀疏活动检测使用加权 BCE
+- `activity_prob` 控制正负样本权重
+
+### PM/PF 指标
+
+文件：
+
+- `network/metrics.py`
+
+函数：
+
+- `pm_pf_at_threshold`
+- `pm_pf_curve`
+
+PM 表示漏检概率，PF 表示虚警概率。
+
+## 10. 评估调用链
+
+入口：
+
+- `network/evaluate.py`
+
+流程：
+
+1. 读取配置
+2. 加载 checkpoint
+3. 从 checkpoint 读取 `system_config`
+4. 从 checkpoint 读取 `model_config`
+5. 重建模型并加载权重
+6. 用同样系统配置生成测试 batch
+7. 前向得到 `probs`
+8. 计算 PM/PF 曲线
+9. 导出 CSV
+
+因为评估使用 checkpoint 中的配置重建模型，所以只要 checkpoint 是用当前相关性配置训练出来的，评估会自动保持维度一致。
+
+## 11. 活跃索引比较调用链
+
+入口：
+
+- `network/compare_active_indices.py`
+
+流程：
+
+1. 加载 checkpoint
+2. 重建模型
+3. 生成测试 batch
+4. 得到 `probs`
+5. 用阈值或 top-k 转为预测活跃索引
+6. 与真实 `label` 活跃索引比较
+7. 输出漏检和虚警用户编号
+
+## 12. 信道估计对照调用链
+
+入口：
+
+- `CE_methods/compare.py`
+
+主要依赖：
+
+- `CE_methods/estimators.py`
+- `network/data.py`
+- `network/model.py`
+- `network/metrics.py`
+
+流程：
+
+1. 从配置读取 CE 对照参数
+2. 加载 Transformer checkpoint
+3. 用 checkpoint 中的 `system_config` 创建 `ActivityDataGenerator`
+4. `sample_batch(return_raw=True)` 生成神经网络输入和原始物理量
+5. Transformer 输出每用户概率 `probs`
+6. 概率通过阈值或 top-k 转为活跃集合
+7. 对每个样本执行：
+   - `transformer+AMP`
+   - `CAMP`
+   - `detected+LMMSE`
+   - `oracle_AMP`
+   - `oracle_LMMSE`
+8. 汇总 PM/PF 和 NMSE
+9. 写入报告文件
+
+相关性增强不会直接改变 CAMP/LMMSE 的公式，但会改变 Transformer 给出的活动概率和活跃集合，从而影响下游信道估计效果。
+
+## 13. AMP 曲线绘图调用链
+
+入口：
+
+- `plot/plot_amp_nmse_vs_iter.py`
+
+流程：
+
+1. 加载 checkpoint
+2. 生成 `return_raw=True` 的测试 batch
+3. Transformer 输出概率
+4. 将概率作为 CAMP 的 soft lambda
+5. 与固定 lambda 的 CAMP 对比
+6. 画出 NMSE 随迭代次数变化的曲线
+
+## 14. 关键张量形状
+
+设：
+
+- `B`: batch size
+- `N`: 用户数
+- `Lp`: 导频长度
+- `M`: 天线数
+- `D`: Transformer 嵌入维度
+
+数据生成：
+
+```text
+positions:    [B, N, 2]
+corr_matrix:  [B, N, N]
+corr_feature: [B, N]
+s:            [B, Lp, N]
+b:            [B, Lp, N]
+y:            [B, Lp, M]
+h:            [B, N, M]
+label:        [B, N]
+```
+
+模型输入：
+
+```text
+x_b without correlation: [B, N, 2Lp]
+x_b with correlation:    [B, N, 2Lp+1]
+x_y:                     [B, 2Lp^2]
+```
+
+模型内部：
+
+```text
+h_b: [B, N, D]
+h_y: [B, 1, D]
+```
+
+模型输出：
+
+```text
+logits: [B, N]
+probs:  [B, N]
+```
+
+## 15. 常用文件索引
+
+- 训练入口：`network/train.py`
+- 数据生成：`network/data.py`
+- 模型实现：`network/model.py`
+- 损失函数：`network/losses.py`
+- PM/PF 指标：`network/metrics.py`
+- 共享配置：`network/config.py`
+- PM/PF 评估：`network/evaluate.py`
+- 活跃索引比较：`network/compare_active_indices.py`
+- 信道估计对照：`CE_methods/compare.py`
+- AMP/LMMSE 实现：`CE_methods/estimators.py`
+- AMP NMSE 绘图：`plot/plot_amp_nmse_vs_iter.py`
 - Matlab 参考：`AMP_Genie/`, `AMP_liuliang/`
 
----
+## 16. 使用建议
 
-如果你希望我把这份文档扩展为更详尽的调用序列图（例如按函数调用链逐行追踪），或把每个主要函数/类的参数与输入输出示例加入文档，我可以继续把 `CALL_CHAIN.md` 拓展为更详细的技术手册。
+建议至少跑两组实验做消融：
 
-## 基于 Transformer 的随机接入 — 详细 Call Chain
-下面给出从生成接入样本到输出用户活动概率的逐步调用链（call chain），对应本工程中具体的文件/函数，便于快速跟踪执行流。
+### Baseline
 
-1. 启动入口
-  - 脚本：`network/train.py`（或 `network/evaluate.py` 用于评估）
-  - 作用：构建参数（`build_args()`）、创建 `SystemConfig`、初始化模型与数据生成器，进入训练/评估循环。
+```python
+ACTIVITY_MODE = "independent"
+USE_CORRELATION_FEATURE = False
+```
 
-2. 数据生成（物理层建模）
-  - 文件：`network/data.py` → 类 `ActivityDataGenerator.sample_batch()`。
-  - 步骤：
-    - 生成复杂随机导频矩阵 `s`，模拟大规模衰落 `g` 与缩放因子 `scale`，得到缩放导频 `b`。
-    - 按伯努利采样生成活动标签 `a`（稀疏随机接入）。
-    - 生成真实信道 `h` 与接收信号 `y = B A H + W`。
-    - 构造模型输入：`x_b`（每用户的实/虚部导频特征）与 `x_y`（向量化接收协方差的实/虚部）。
+这对应用户活跃独立，Transformer 输入不包含相关性标量。
 
-3. 特征归一化与批次准备
-  - 文件：`network/data.py` 内实现。
-  - 作用：对 `x_b`、`x_y` 做 RMS 归一化并转换为浮点张量，返回 `label` 供训练计算损失。
+### Correlation-Enhanced
 
-4. 嵌入层（token 化）
-  - 文件：`network/model.py` → `HeterogeneousTransformer.embed_b` 与 `embed_y`。
-  - 作用：将 `x_b`（N 个设备 token）映射到维度 `D`，将 `x_y`（接收 token）映射并扩维为 1 个 token。
+```python
+ACTIVITY_MODE = "correlated"
+USE_CORRELATION_FEATURE = True
+```
 
-5. 异构编码器（多层）
-  - 文件：`network/model.py` → `HeterogeneousEncoderLayer`（包含 `HeterogeneousMHA` 与 `HeterogeneousFFN`）。
-  - 作用：
-    - 对设备 token 与接收 token 使用不同的 Q/K/V 投影（heterogeneous attention），计算跨 token 的注意力权重。
-    - 每层执行残差连接与各自的归一化（BatchNorm/LayerNorm），以及 token 特定的前馈网络。
-    - 堆叠 L 层以逐步提取跨设备与接收统计间的上下文信息。
+这对应用户活跃具有空间相关性，且 Transformer 的 `x_b` 每个用户 token 额外包含一个相关性摘要特征。
 
-6. 上下文解码与概率输出
-  - 文件：`network/model.py` → `ContextDecoder`。
-  - 作用：使用最终接收 token 作为 query，结合设备 token 计算 context 向量；将 context 与每个设备 token 匹配，输出 logits；通过 sigmoid 得到每个用户的活动概率 `probs`。
-
-7. 损失计算与权重调整
-  - 文件：`network/losses.py` → `weighted_activity_loss()`。
-  - 作用：按稀疏活动先验对正负样本加权计算二元交叉熵，稳定训练并聚焦正确率与召回的权衡。
-
-8. 反向传播与优化
-  - 文件：`network/train.py` 中的训练循环。
-  - 细节：支持 AdamW 优化器、可选混合精度（AMP）、梯度裁剪、学习率预热与衰减，按步保存 `last.pt` 与最优指标对应的 `best_pm.pt`。
-
-9. 评估与指标
-  - 文件：`network/evaluate.py` 与 `network/metrics.py`。
-  - 作用：加载 checkpoint，重建数据生成器与模型，批量推理得到 `probs`，计算 PM/PF 曲线并导出 CSV，便于画 ROC/性能曲线。
-
-10. 下游处理与对照实验
-   - 文件：`CE_methods/estimators.py` 等。
-   - 作用：把网络输出的 `probs` 转换为活跃索引（阈值或 top-k），并在已检测集合上执行 LMMSE 或 AMP 信道估计；与传统方法对比以评估检测/信道估计性能。
-
-11. 日志、检查点与可重复性
-   - 训练脚本会写入 `args`、`system_cfg` 与 `model_cfg` 到 `train.log`，并把检查点保存在 `checkpoint/` 目录，便于复现实验与后续评估。
-
-## 参考对应文件（快速定位）
-- 训练入口：[network/train.py](network/train.py#L1)
-- 数据生成：[network/data.py](network/data.py#L1)
-- 模型实现：[network/model.py](network/model.py#L1)
-- 损失：[network/losses.py](network/losses.py#L1)
-- 指标：[network/metrics.py](network/metrics.py#L1)
-- 评估：[network/evaluate.py](network/evaluate.py#L1)
-- 传统方法对照：[CE_methods/estimators.py](CE_methods/estimators.py#L1)
-
+两组实验需要分别训练 checkpoint，再分别运行评估脚本比较 PM/PF 曲线。不要把旧 checkpoint 直接加载到输入维度不同的新模型中。

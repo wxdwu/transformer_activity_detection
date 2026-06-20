@@ -26,17 +26,21 @@ N = 200  # number of users
 M = 32  # number of antennas
 LP = 30  # pilot length
 ACTIVITY_PROB = 0.1
-CELL_RADIUS_M = 250.0
+CELL_RADIUS_M = 500.0
 PMAX_DBM = 23.0
 NOISE_MODE = "snr"  # "snr" or "thermal"
 SNR_DB = 20.0
 NOISE_POWER_DBM_HZ = -169.0
 BANDWIDTH_HZ = 10e6
+ACTIVITY_MODE = "correlated"  # "independent" or "correlated"
+USE_CORRELATION_FEATURE = True
+CORRELATION_ACTIVITY_STRENGTH = 0.8
 
 # =========================
 # Model Parameters
 # =========================
 MODEL_NAME = "base"
+MODEL_USE_CORRELATION_FEATURE = USE_CORRELATION_FEATURE
 DIM = 128
 NUM_LAYERS = 5
 NUM_HEADS = 8
@@ -55,7 +59,7 @@ DEVICE = "auto"
 SAVE_DIR = Path("checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000")
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
-EPOCHS = 100
+EPOCHS = 5
 STEPS_PER_EPOCH = 2000
 BATCH_SIZE = 128
 LR = 1e-4
@@ -96,7 +100,11 @@ def build_args() -> SimpleNamespace:
         snr_db=SNR_DB,
         noise_power_dbm_hz=NOISE_POWER_DBM_HZ,
         bandwidth_hz=BANDWIDTH_HZ,
+        activity_mode=ACTIVITY_MODE,
+        use_correlation_feature=USE_CORRELATION_FEATURE,
+        correlation_activity_strength=CORRELATION_ACTIVITY_STRENGTH,
         model_name=MODEL_NAME,
+        model_use_correlation_feature=MODEL_USE_CORRELATION_FEATURE,
         dim=DIM,
         num_layers=NUM_LAYERS,
         num_heads=NUM_HEADS,
@@ -139,6 +147,9 @@ def build_system_config(args: SimpleNamespace) -> SystemConfig:
         pmax_dbm=args.pmax_dbm,
         noise_mode=args.noise_mode,
         snr_db=args.snr_db,
+        activity_mode=args.activity_mode,
+        use_correlation_feature=args.use_correlation_feature,
+        correlation_activity_strength=args.correlation_activity_strength,
     )
 
 
@@ -147,6 +158,7 @@ def build_model_config(args: SimpleNamespace) -> dict:
         "model_name": args.model_name,
         "num_devices": args.num_devices,
         "pilot_len": args.pilot_len,
+        "use_correlation_feature": args.model_use_correlation_feature,
         "dim": args.dim,
         "num_layers": args.num_layers,
         "num_heads": args.num_heads,
