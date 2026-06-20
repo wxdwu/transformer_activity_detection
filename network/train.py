@@ -32,8 +32,8 @@ NOISE_MODE = "snr"  # "snr" or "thermal"
 SNR_DB = 20.0
 NOISE_POWER_DBM_HZ = -169.0
 BANDWIDTH_HZ = 10e6
-ACTIVITY_MODE = "correlated"  # "independent" or "correlated"
-USE_CORRELATION_FEATURE = True
+ACTIVITY_MODE = "independent"  # "independent" or "correlated"
+USE_CORRELATION_FEATURE = False
 CORRELATION_ACTIVITY_STRENGTH = 0.8
 
 # =========================
@@ -56,7 +56,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = Path("checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000")
+SAVE_DIR = ROOT / "checkpoint/independent_260620"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 5
