@@ -160,7 +160,7 @@ def main() -> None:
 
     for _ in range(args.num_test_batches):
         batch = data_gen.sample_batch(args.batch_size, return_raw=True)
-        _, probs = model(batch["x_b"], batch["x_y"])
+        _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
 
         y = batch["y"]
         s = batch["s"]
@@ -251,4 +251,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

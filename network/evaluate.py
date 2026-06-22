@@ -53,7 +53,7 @@ def main() -> None:
     with torch.no_grad():
         for _ in range(args.num_test_batches):
             batch = data_gen.sample_batch(args.batch_size)
-            _, probs = model(batch["x_b"], batch["x_y"])
+            _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
             all_probs.append(probs)
             all_labels.append(batch["label"])
 

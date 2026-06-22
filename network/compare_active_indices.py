@@ -58,7 +58,7 @@ def main() -> None:
     data_gen = ActivityDataGenerator(SystemConfig(**ckpt["system_config"]), device=device)
 
     batch = data_gen.sample_batch(args.num_samples, return_raw=False)
-    _, probs = model(batch["x_b"], batch["x_y"])  # [B, N]
+    _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))  # [B, N]
     labels = batch["label"]  # [B, N]
 
     topk = args.topk if args.topk > 0 else None
@@ -121,4 +121,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

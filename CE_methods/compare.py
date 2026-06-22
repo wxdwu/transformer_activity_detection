@@ -361,7 +361,7 @@ def main() -> None:
         batch = data_gen.sample_batch(args.batch_size, return_raw=True)
         # Transformer 前向输出：
         # probs: [B, N]，每个样本中每个用户的活跃概率。
-        _, probs = model(batch["x_b"], batch["x_y"])
+        _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
 
         labels = batch["label"]
         # 预测活跃集合：由 Transformer 概率通过 threshold 或 topk 转换而来。

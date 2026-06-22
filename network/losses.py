@@ -11,7 +11,7 @@ def weighted_activity_loss(
 ) -> torch.Tensor:
     # Paper Eq. (4): weighted BCE (active class gets larger weight under sparse activity)
     n = targets.shape[1]
-    k_over_n = float(activity_prob)
+    k_over_n = min(max(float(activity_prob), 1e-4), 1.0 - 1e-4)
     pos_w = 1.0 - k_over_n
     neg_w = k_over_n
 

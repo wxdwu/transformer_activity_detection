@@ -26,17 +26,28 @@ N = 200  # number of users
 M = 32  # number of antennas
 LP = 30  # pilot length
 ACTIVITY_PROB = 0.1
-CELL_RADIUS_M = 250.0
+CELL_RADIUS_M = 500.0
 PMAX_DBM = 23.0
 NOISE_MODE = "snr"  # "snr" or "thermal"
 SNR_DB = 20.0
 NOISE_POWER_DBM_HZ = -169.0
 BANDWIDTH_HZ = 10e6
+ACTIVITY_MODE = "event"  # "independent" or "event"
+EVENT_LAMBDA = 1.0
+EVENT_MAX_COUNT = 3
+EVENT_SIGMA_M = 120.0
+EVENT_TRIGGER_PROB = 0.9
+BACKGROUND_ACTIVITY_PROB = 0.005
+CORRELATION_LENGTH_M = 0.0
 
 # =========================
 # Model Parameters
 # =========================
 MODEL_NAME = "base"
+USE_CORRELATION_ATTENTION_BIAS = True
+USE_CORRELATION_LOGIT_REFINEMENT = True
+CORR_ATTN_INIT = 1.0
+CORR_REFINE_INIT = 0.5
 DIM = 128
 NUM_LAYERS = 5
 NUM_HEADS = 8
@@ -52,7 +63,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = Path("checkpoint/checkpoints_N200_Lp30_M32_snr20_normpilot_bs128_steps2000")
+SAVE_DIR = ROOT / "checkpoint/event_corrmatrix_260622"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 100
@@ -88,7 +99,18 @@ def build_args() -> SimpleNamespace:
         snr_db=SNR_DB,
         noise_power_dbm_hz=NOISE_POWER_DBM_HZ,
         bandwidth_hz=BANDWIDTH_HZ,
+        activity_mode=ACTIVITY_MODE,
+        event_lambda=EVENT_LAMBDA,
+        event_max_count=EVENT_MAX_COUNT,
+        event_sigma_m=EVENT_SIGMA_M,
+        event_trigger_prob=EVENT_TRIGGER_PROB,
+        background_activity_prob=BACKGROUND_ACTIVITY_PROB,
+        correlation_length_m=CORRELATION_LENGTH_M,
         model_name=MODEL_NAME,
+        use_correlation_attention_bias=USE_CORRELATION_ATTENTION_BIAS,
+        use_correlation_logit_refinement=USE_CORRELATION_LOGIT_REFINEMENT,
+        corr_attn_init=CORR_ATTN_INIT,
+        corr_refine_init=CORR_REFINE_INIT,
         dim=DIM,
         num_layers=NUM_LAYERS,
         num_heads=NUM_HEADS,
@@ -131,6 +153,13 @@ def build_system_config(args: SimpleNamespace) -> SystemConfig:
         pmax_dbm=args.pmax_dbm,
         noise_mode=args.noise_mode,
         snr_db=args.snr_db,
+        activity_mode=args.activity_mode,
+        event_lambda=args.event_lambda,
+        event_max_count=args.event_max_count,
+        event_sigma_m=args.event_sigma_m,
+        event_trigger_prob=args.event_trigger_prob,
+        background_activity_prob=args.background_activity_prob,
+        correlation_length_m=args.correlation_length_m,
     )
 
 
@@ -139,6 +168,10 @@ def build_model_config(args: SimpleNamespace) -> dict:
         "model_name": args.model_name,
         "num_devices": args.num_devices,
         "pilot_len": args.pilot_len,
+        "use_correlation_attention_bias": args.use_correlation_attention_bias,
+        "use_correlation_logit_refinement": args.use_correlation_logit_refinement,
+        "corr_attn_init": args.corr_attn_init,
+        "corr_refine_init": args.corr_refine_init,
         "dim": args.dim,
         "num_layers": args.num_layers,
         "num_heads": args.num_heads,
@@ -207,11 +240,11 @@ def main() -> None:
         for _ in pbar:
             batch = data_gen.sample_batch(args.batch_size)
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                logits, _ = model(batch["x_b"], batch["x_y"])
+                logits, _ = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
                 loss = weighted_activity_loss(
                     logits=logits,
                     targets=batch["label"],
-                    activity_prob=system_cfg.activity_prob,
+                    activity_prob=float(batch["label"].mean().item()),
                 )
 
             if not torch.isfinite(loss):
@@ -246,7 +279,7 @@ def main() -> None:
             ]
             for batch in eval_iter:
                 with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-                    _, probs = model(batch["x_b"], batch["x_y"])
+                    _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
                 eval_probs.append(probs)
                 eval_labels.append(batch["label"])
 

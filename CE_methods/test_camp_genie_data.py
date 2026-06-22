@@ -163,7 +163,7 @@ def run_data_experiment(args: SimpleNamespace) -> tuple[torch.Tensor, torch.Tens
         batch = data_gen.sample_batch(2, return_raw=True)
         label = batch["label"][0]
         sigma_w = math.sqrt(float(batch["noise_var"][0].item()))
-        _, probs = model(batch["x_b"], batch["x_y"])
+        _, probs = model(batch["x_b"], batch["x_y"], batch.get("corr_matrix"))
         lambda_net = probs[0].to(device=device, dtype=label.dtype)
         probs_eval.append(lambda_net.detach().cpu())
         labels_eval.append(label.detach().cpu())

@@ -73,7 +73,15 @@ class HeterogeneousMHA(nn.Module):
     多头输出投影也分成 Wo_B 和 Wo_Y 两套参数。
     """
 
-    def __init__(self, dim: int, num_heads: int, head_dim: int, attn_dropout: float = 0.0) -> None:
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        head_dim: int,
+        attn_dropout: float = 0.0,
+        use_correlation_attention_bias: bool = False,
+        corr_attn_init: float = 1.0,
+    ) -> None:
         super().__init__()
         # D  = dim，token 的嵌入维度。
         # H  = num_heads，多头注意力的 head 数。
@@ -81,6 +89,7 @@ class HeterogeneousMHA(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.head_dim = head_dim
+        self.use_correlation_attention_bias = use_correlation_attention_bias
 
         # Step 0-1，对应论文 Eq. (10)-(12)：B 类 token 使用单独的 Q/K/V 投影。
         # 输入 x_b: [B, N, D]
@@ -101,6 +110,10 @@ class HeterogeneousMHA(nn.Module):
         self.wo_b = nn.Parameter(torch.randn(num_heads, dim, head_dim) * 0.02)
         self.wo_y = nn.Parameter(torch.randn(num_heads, dim, head_dim) * 0.02)
         self.attn_drop = nn.Dropout(attn_dropout)
+        if use_correlation_attention_bias:
+            self.corr_attn_scale = nn.Parameter(torch.tensor(float(corr_attn_init)))
+        else:
+            self.register_parameter("corr_attn_scale", None)
 
     def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
         # 把最后一维 H*Dh 拆成两个维度 H 和 Dh。
@@ -109,13 +122,34 @@ class HeterogeneousMHA(nn.Module):
         b, t, _ = x.shape
         return x.view(b, t, self.num_heads, self.head_dim)
 
-    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _build_correlation_attention_mask(
+        self,
+        corr_matrix: torch.Tensor | None,
+        bsz: int,
+        n: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> torch.Tensor | None:
+        if not self.use_correlation_attention_bias or corr_matrix is None:
+            return None
+        if corr_matrix.shape[:3] != (bsz, n, n):
+            raise ValueError(f"corr_matrix must have shape [B,N,N], got {tuple(corr_matrix.shape)}")
+
+        corr = corr_matrix.to(device=device, dtype=dtype).clamp(0.0, 1.0)
+        mask = torch.zeros((bsz, 1, n + 1, n + 1), device=device, dtype=dtype)
+        mask[:, :, :n, :n] = self.corr_attn_scale.to(dtype=dtype) * corr.unsqueeze(1)
+        return mask
+
+    def forward(
+        self,
+        x_b: torch.Tensor,
+        x_y: torch.Tensor,
+        corr_matrix: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 输入：
         # x_b: [B, N, D]，N 个设备/用户导频 token。
         # x_y: [B, 1, D]，1 个接收信号 token。
         bsz, n, _ = x_b.shape
-        x_all = torch.cat([x_b, x_y], dim=1)  # [B, N+1, D]，整体 token 序列，仅用于表达拼接形状。
-
         # Step 1，对应论文 Eq. (10)-(12)：为全部 N+1 个 token 构造 Q/K/V。
         # B token 路径：
         #   wq_b/wk_b/wv_b: [B, N, D] -> [B, N, H*Dh]
@@ -144,11 +178,18 @@ class HeterogeneousMHA(nn.Module):
         # 输入 qh/kh/vh: [B, H, N+1, Dh]
         # 输出 ctx:      [B, H, N+1, Dh]
         drop_p = self.attn_drop.p if self.training else 0.0
+        attn_mask = self._build_correlation_attention_mask(
+            corr_matrix=corr_matrix,
+            bsz=bsz,
+            n=n,
+            dtype=qh.dtype,
+            device=qh.device,
+        )
         ctx = F.scaled_dot_product_attention(
             qh,
             kh,
             vh,
-            attn_mask=None,
+            attn_mask=attn_mask,
             dropout_p=drop_p,
             is_causal=False,
         )  # [B, H, N+1, Dh]
@@ -215,6 +256,8 @@ class HeterogeneousEncoderLayer(nn.Module):
         attn_dropout: float = 0.0,
         ffn_dropout: float = 0.0,
         norm_type: str = "batch",
+        use_correlation_attention_bias: bool = False,
+        corr_attn_init: float = 1.0,
     ) -> None:
         super().__init__()
         self.mha = HeterogeneousMHA(
@@ -222,6 +265,8 @@ class HeterogeneousEncoderLayer(nn.Module):
             num_heads=num_heads,
             head_dim=head_dim,
             attn_dropout=attn_dropout,
+            use_correlation_attention_bias=use_correlation_attention_bias,
+            corr_attn_init=corr_attn_init,
         )
         self.ffn = HeterogeneousFFN(dim=dim, ff_dim=ff_dim, ffn_dropout=ffn_dropout)
         if norm_type == "layer":
@@ -233,9 +278,14 @@ class HeterogeneousEncoderLayer(nn.Module):
         self.bn2_b = norm(dim)
         self.bn2_y = norm(dim)
 
-    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x_b: torch.Tensor,
+        x_y: torch.Tensor,
+        corr_matrix: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Eq. (8)：异构 MHA 后接 skip connection 和 BN/LN。
-        mha_b, mha_y = self.mha(x_b, x_y)
+        mha_b, mha_y = self.mha(x_b, x_y, corr_matrix)
         hat_b = self.bn1_b(x_b + mha_b)
         hat_y = self.bn1_y(x_y + mha_y)
 
@@ -339,11 +389,16 @@ class HeterogeneousTransformer(nn.Module):
         ffn_dropout: float = 0.0,
         ctx_attn_dropout: float = 0.0,
         norm_type: str = "batch",
+        use_correlation_attention_bias: bool = False,
+        corr_attn_init: float = 1.0,
+        use_correlation_logit_refinement: bool = False,
+        corr_refine_init: float = 0.5,
     ) -> None:
         super().__init__()
         self.num_devices = num_devices
         self.pilot_len = pilot_len
         self.dim = dim
+        self.use_correlation_logit_refinement = use_correlation_logit_refinement
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
         # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}，再用共享的 W_B^in 投影。
@@ -363,6 +418,8 @@ class HeterogeneousTransformer(nn.Module):
                     attn_dropout=attn_dropout,
                     ffn_dropout=ffn_dropout,
                     norm_type=norm_type,
+                    use_correlation_attention_bias=use_correlation_attention_bias,
+                    corr_attn_init=corr_attn_init,
                 )
                 for _ in range(num_layers)
             ]
@@ -374,17 +431,45 @@ class HeterogeneousTransformer(nn.Module):
             score_scale=score_scale,
             attn_dropout=ctx_attn_dropout,
         )
+        if use_correlation_logit_refinement:
+            self.corr_refine_scale = nn.Parameter(torch.tensor(float(corr_refine_init)))
+        else:
+            self.register_parameter("corr_refine_scale", None)
 
-    def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _refine_logits_with_correlation(
+        self,
+        logits: torch.Tensor,
+        corr_matrix: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if not self.use_correlation_logit_refinement or corr_matrix is None:
+            return logits
+        bsz, n = logits.shape
+        if corr_matrix.shape[:3] != (bsz, n, n):
+            raise ValueError(f"corr_matrix must have shape [B,N,N], got {tuple(corr_matrix.shape)}")
+
+        corr = corr_matrix.to(device=logits.device, dtype=logits.dtype).clamp(0.0, 1.0)
+        corr_norm = corr / corr.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        neighbor_logits = torch.bmm(corr_norm, logits.unsqueeze(-1)).squeeze(-1)
+        return logits + self.corr_refine_scale.to(dtype=logits.dtype) * neighbor_logits
+
+    def forward(
+        self,
+        x_b: torch.Tensor,
+        x_y: torch.Tensor,
+        corr_matrix: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # x_b: [B, N, 2Lp]，保存设备导频的实部/虚部特征。
         # x_y: [B, 2Lp^2]，保存向量化协方差的实部/虚部特征。
         h_b = self.embed_b(x_b)
         h_y = self.embed_y(x_y).unsqueeze(1)
 
         for layer in self.layers:
-            h_b, h_y = layer(h_b, h_y)
+            h_b, h_y = layer(h_b, h_y, corr_matrix)
 
-        return self.decoder(h_b, h_y)
+        logits, _ = self.decoder(h_b, h_y)
+        logits = self._refine_logits_with_correlation(logits, corr_matrix)
+        probs = torch.sigmoid(logits)
+        return logits, probs
 
 
 class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
@@ -409,6 +494,10 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         ffn_dropout: float = 0.0,
         ctx_attn_dropout: float = 0.0,
         norm_type: str = "layer",
+        use_correlation_attention_bias: bool = False,
+        corr_attn_init: float = 1.0,
+        use_correlation_logit_refinement: bool = False,
+        corr_refine_init: float = 0.5,
     ) -> None:
         super().__init__(
             num_devices=num_devices,
@@ -423,6 +512,10 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
             ffn_dropout=ffn_dropout,
             ctx_attn_dropout=ctx_attn_dropout,
             norm_type=norm_type,
+            use_correlation_attention_bias=use_correlation_attention_bias,
+            corr_attn_init=corr_attn_init,
+            use_correlation_logit_refinement=use_correlation_logit_refinement,
+            corr_refine_init=corr_refine_init,
         )
 
 
@@ -445,6 +538,10 @@ def build_model_from_config(cfg: dict) -> nn.Module:
     common = {
         "num_devices": cfg["num_devices"],
         "pilot_len": cfg["pilot_len"],
+        "use_correlation_attention_bias": bool(cfg.get("use_correlation_attention_bias", False)),
+        "corr_attn_init": float(_get_num("corr_attn_init", 1.0)),
+        "use_correlation_logit_refinement": bool(cfg.get("use_correlation_logit_refinement", False)),
+        "corr_refine_init": float(_get_num("corr_refine_init", 0.5)),
     }
 
     if model_name in {"large", "large_dim", "n400"}:
