@@ -523,7 +523,6 @@ USE_CORRELATION_FEATURE = True
 260620:
 1、消融对比：
 train.py line 35-36 # 数据里是否加入活跃相关性，模型输入里是否加入相关性特征
-activity_mode="independent", use_correlation_feature=False 
 activity_mode="correlated", use_correlation_feature=False 
 activity_mode="correlated", use_correlation_feature=True
 attention: train.py line 59 change save path
