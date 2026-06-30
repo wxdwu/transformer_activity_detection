@@ -68,7 +68,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = ROOT / "checkpoint/addcorr_260629"
+SAVE_DIR = ROOT / "checkpoint/addcorr_260630"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 100
