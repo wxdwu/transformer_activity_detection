@@ -188,3 +188,101 @@ B: ACTIVITY_MODE="event", USE_CORRELATION_ATTENTION_BIAS=True,  USE_CORRELATION_
 C: ACTIVITY_MODE="event", USE_CORRELATION_ATTENTION_BIAS=False, USE_CORRELATION_LOGIT_REFINEMENT=True
 D: ACTIVITY_MODE="event", USE_CORRELATION_ATTENTION_BIAS=True,  USE_CORRELATION_LOGIT_REFINEMENT=True
 ```
+
+## 9. 260630 相关性路径改进
+
+本次改进不改训练 loss，不新增辅助 loss，也不改默认学习率策略。主 loss 仍是：
+
+```python
+weighted_activity_loss(
+    logits=logits,
+    targets=batch["label"],
+    activity_prob=float(batch["label"].mean().item()),
+)
+```
+
+改动只发生在使用相关性矩阵的模型路径中，目标是在已有增益基础上减少弱相关用户之间的噪声传播，并让相关性先验更直接进入 device token 表示。
+
+### 9.1 稀疏局部相关图
+
+原始实现直接使用完整 dense `corr_matrix`。当前新增：
+
+```python
+CORR_TOPK = 24
+CORR_THRESHOLD = 0.10
+```
+
+模型内部会先对相关矩阵做筛选：
+
+```text
+corr_ij < CORR_THRESHOLD 的边置零
+每个用户只保留 top-k 个最相关邻居
+```
+
+筛选后的相关图同时用于 attention bias、feature mixer 和 logits refinement。这样可以避免远距离弱相关用户在 dense 图里持续传播噪声。
+
+### 9.2 Centered Logits Refinement
+
+原始 logits refinement 是：
+
+```text
+logits_refined = logits + gamma * CorrNorm @ logits
+```
+
+该形式会直接叠加邻居 logits。如果某个 batch 中 logits 整体偏正，可能提高 `p_mean` 和 PF。当前默认改为 centered refinement：
+
+```python
+CORR_REFINE_MODE = "centered"
+CORR_REFINE_INIT = 0.5
+```
+
+对应公式：
+
+```text
+neighbor_logits = CorrNorm @ logits
+sample_center = mean(logits)
+logits_refined = logits + gamma * (neighbor_logits - sample_center)
+```
+
+直觉：只利用“邻居相对本样本平均水平更活跃/更不活跃”的信息，而不是把邻居 logits 的绝对值直接加上去。
+
+旧模式仍可恢复：
+
+```python
+CORR_REFINE_MODE = "additive"
+```
+
+也保留了图扩散模式：
+
+```python
+CORR_REFINE_MODE = "diffusion"
+```
+
+### 9.3 Correlation Feature Mixer
+
+当前新增一个轻量图消息传递模块，位置在 Transformer encoder 之后、decoder 之前：
+
+```python
+USE_CORRELATION_FEATURE_MIXER = True
+CORR_FEATURE_MIX_INIT = 0.1
+```
+
+计算方式：
+
+```text
+neighbor_h = CorrNorm @ h_b
+h_b = h_b + tanh(eta) * MLP(neighbor_h - h_b)
+```
+
+它让 device token 在输出检测前吸收局部相关邻居的表示差异。该模块只在相关性路径打开时启用。
+
+### 9.4 对照实验开关
+
+不加相关性的对照仍只需要关闭原来的两个开关：
+
+```python
+USE_CORRELATION_ATTENTION_BIAS = False
+USE_CORRELATION_LOGIT_REFINEMENT = False
+```
+
+即使 `USE_CORRELATION_FEATURE_MIXER = True` 保持默认，`build_model_config` 和 `build_model_from_config` 也会在上述两个开关都为 False 时自动禁用 feature mixer，保证对照模型不使用相关性矩阵。

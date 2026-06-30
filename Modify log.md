@@ -19,3 +19,12 @@ alpha 和 gamma 都是可学习参数
 network/train.py # 默认使用 event 数据和 corr_matrix 模型，保存到 checkpoint/event_corrmatrix_260622
 network/train.py # loss 权重改为使用 batch 实际活跃比例
 network/evaluate.py、network/compare_active_indices.py、CE_methods/compare.py、CE_methods/test_camp_genie_data.py、plot/plot_amp_nmse_vs_iter.py # 前向调用改为 model(x_b, x_y, corr_matrix)
+
+260630:
+4、在不改变 loss 口径的基础上增强相关性路径：
+network/model.py # 新增 sparsify_correlation_matrix，对 corr_matrix 做 CORR_THRESHOLD 过滤和每用户 CORR_TOPK 邻居保留，降低弱相关边噪声传播
+network/model.py # logits refinement 新增 CORR_REFINE_MODE="centered"，使用 logits + gamma*(CorrNorm@logits - mean(logits))，减少 additive refinement 对整体 p_mean 的抬升
+network/model.py # 新增 CorrelationFeatureMixer，在 encoder 后、decoder 前做 h_b + tanh(eta)*MLP(CorrNorm@h_b - h_b) 的轻量图消息传递
+network/train.py、network/config.py # 新增 CORR_TOPK=24、CORR_THRESHOLD=0.10、CORR_REFINE_MODE="centered"、USE_CORRELATION_FEATURE_MIXER=True、CORR_FEATURE_MIX_INIT=0.1
+network/train.py、network/model.py # 当 USE_CORRELATION_ATTENTION_BIAS=False 且 USE_CORRELATION_LOGIT_REFINEMENT=False 时自动关闭 feature mixer，保证不加相关性对照不使用相关性矩阵
+CALL_CHAIN.md # 追加 260630 相关性路径改进说明；本次未新增辅助 loss，训练 loss 仍保持 batch 活跃比例 weighted BCE

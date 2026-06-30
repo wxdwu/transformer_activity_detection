@@ -7,6 +7,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def sparsify_correlation_matrix(
+    corr_matrix: torch.Tensor,
+    corr_topk: int = 0,
+    corr_threshold: float = 0.0,
+) -> torch.Tensor:
+    corr = corr_matrix.clamp(0.0, 1.0)
+    if corr_threshold > 0.0:
+        corr = corr * (corr >= float(corr_threshold)).to(dtype=corr.dtype)
+    if corr_topk > 0 and corr_topk < corr.shape[-1]:
+        _, indices = torch.topk(corr, k=int(corr_topk), dim=-1)
+        mask = torch.zeros_like(corr).scatter_(-1, indices, 1.0)
+        corr = corr * mask
+    return corr
+
+
 # 本文件实现论文：
 # "Heterogeneous Transformer: A Scale Adaptable Neural Network
 # Architecture for Device Activity Detection" 中的异构 Transformer。
@@ -81,6 +96,8 @@ class HeterogeneousMHA(nn.Module):
         attn_dropout: float = 0.0,
         use_correlation_attention_bias: bool = False,
         corr_attn_init: float = 1.0,
+        corr_topk: int = 0,
+        corr_threshold: float = 0.0,
     ) -> None:
         super().__init__()
         # D  = dim，token 的嵌入维度。
@@ -90,6 +107,8 @@ class HeterogeneousMHA(nn.Module):
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.use_correlation_attention_bias = use_correlation_attention_bias
+        self.corr_topk = int(corr_topk)
+        self.corr_threshold = float(corr_threshold)
 
         # Step 0-1，对应论文 Eq. (10)-(12)：B 类 token 使用单独的 Q/K/V 投影。
         # 输入 x_b: [B, N, D]
@@ -135,7 +154,12 @@ class HeterogeneousMHA(nn.Module):
         if corr_matrix.shape[:3] != (bsz, n, n):
             raise ValueError(f"corr_matrix must have shape [B,N,N], got {tuple(corr_matrix.shape)}")
 
-        corr = corr_matrix.to(device=device, dtype=dtype).clamp(0.0, 1.0)
+        corr = corr_matrix.to(device=device, dtype=dtype)
+        corr = sparsify_correlation_matrix(
+            corr,
+            corr_topk=self.corr_topk,
+            corr_threshold=self.corr_threshold,
+        )
         mask = torch.zeros((bsz, 1, n + 1, n + 1), device=device, dtype=dtype)
         mask[:, :, :n, :n] = self.corr_attn_scale.to(dtype=dtype) * corr.unsqueeze(1)
         return mask
@@ -258,6 +282,8 @@ class HeterogeneousEncoderLayer(nn.Module):
         norm_type: str = "batch",
         use_correlation_attention_bias: bool = False,
         corr_attn_init: float = 1.0,
+        corr_topk: int = 0,
+        corr_threshold: float = 0.0,
     ) -> None:
         super().__init__()
         self.mha = HeterogeneousMHA(
@@ -267,6 +293,8 @@ class HeterogeneousEncoderLayer(nn.Module):
             attn_dropout=attn_dropout,
             use_correlation_attention_bias=use_correlation_attention_bias,
             corr_attn_init=corr_attn_init,
+            corr_topk=corr_topk,
+            corr_threshold=corr_threshold,
         )
         self.ffn = HeterogeneousFFN(dim=dim, ff_dim=ff_dim, ffn_dropout=ffn_dropout)
         if norm_type == "layer":
@@ -367,6 +395,43 @@ class ContextDecoder(nn.Module):
         return logits, probs
 
 
+class CorrelationFeatureMixer(nn.Module):
+    """Lightweight graph message passing over device tokens before decoding."""
+
+    def __init__(
+        self,
+        dim: int,
+        corr_mix_init: float = 0.1,
+        corr_topk: int = 0,
+        corr_threshold: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.corr_topk = int(corr_topk)
+        self.corr_threshold = float(corr_threshold)
+        self.mix_scale = nn.Parameter(torch.tensor(float(corr_mix_init)))
+        self.delta_proj = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+
+    def forward(self, h_b: torch.Tensor, corr_matrix: torch.Tensor | None) -> torch.Tensor:
+        if corr_matrix is None:
+            return h_b
+        corr = corr_matrix.to(device=h_b.device, dtype=h_b.dtype)
+        corr = sparsify_correlation_matrix(
+            corr,
+            corr_topk=self.corr_topk,
+            corr_threshold=self.corr_threshold,
+        )
+        degree = corr.sum(dim=-1, keepdim=True)
+        graph = corr / degree.clamp_min(1e-12)
+        neighbor_h = torch.bmm(graph, h_b)
+        active = (degree > 0.0).to(dtype=h_b.dtype)
+        message = self.delta_proj(neighbor_h - h_b) * active
+        return h_b + torch.tanh(self.mix_scale).to(dtype=h_b.dtype) * message
+
+
 class HeterogeneousTransformer(nn.Module):
     """论文 baseline 的 Heterogeneous Transformer。
 
@@ -391,14 +456,22 @@ class HeterogeneousTransformer(nn.Module):
         norm_type: str = "batch",
         use_correlation_attention_bias: bool = False,
         corr_attn_init: float = 1.0,
+        corr_topk: int = 0,
+        corr_threshold: float = 0.0,
         use_correlation_logit_refinement: bool = False,
         corr_refine_init: float = 0.5,
+        corr_refine_mode: str = "additive",
+        use_correlation_feature_mixer: bool = False,
+        corr_feature_mix_init: float = 0.1,
     ) -> None:
         super().__init__()
         self.num_devices = num_devices
         self.pilot_len = pilot_len
         self.dim = dim
         self.use_correlation_logit_refinement = use_correlation_logit_refinement
+        self.corr_refine_mode = str(corr_refine_mode).lower()
+        self.corr_topk = int(corr_topk)
+        self.corr_threshold = float(corr_threshold)
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
         # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}，再用共享的 W_B^in 投影。
@@ -420,10 +493,21 @@ class HeterogeneousTransformer(nn.Module):
                     norm_type=norm_type,
                     use_correlation_attention_bias=use_correlation_attention_bias,
                     corr_attn_init=corr_attn_init,
+                    corr_topk=corr_topk,
+                    corr_threshold=corr_threshold,
                 )
                 for _ in range(num_layers)
             ]
         )
+        if use_correlation_feature_mixer:
+            self.corr_feature_mixer = CorrelationFeatureMixer(
+                dim=dim,
+                corr_mix_init=corr_feature_mix_init,
+                corr_topk=corr_topk,
+                corr_threshold=corr_threshold,
+            )
+        else:
+            self.corr_feature_mixer = None
         self.decoder = ContextDecoder(
             dim=dim,
             num_heads=num_heads,
@@ -447,10 +531,25 @@ class HeterogeneousTransformer(nn.Module):
         if corr_matrix.shape[:3] != (bsz, n, n):
             raise ValueError(f"corr_matrix must have shape [B,N,N], got {tuple(corr_matrix.shape)}")
 
-        corr = corr_matrix.to(device=logits.device, dtype=logits.dtype).clamp(0.0, 1.0)
-        corr_norm = corr / corr.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        corr = corr_matrix.to(device=logits.device, dtype=logits.dtype)
+        corr = sparsify_correlation_matrix(
+            corr,
+            corr_topk=self.corr_topk,
+            corr_threshold=self.corr_threshold,
+        )
+        degree = corr.sum(dim=-1, keepdim=True)
+        active = (degree > 0.0).to(dtype=logits.dtype).squeeze(-1)
+        corr_norm = corr / degree.clamp_min(1e-12)
         neighbor_logits = torch.bmm(corr_norm, logits.unsqueeze(-1)).squeeze(-1)
-        return logits + self.corr_refine_scale.to(dtype=logits.dtype) * neighbor_logits
+        scale = self.corr_refine_scale.to(dtype=logits.dtype)
+        if self.corr_refine_mode == "centered":
+            sample_center = logits.mean(dim=1, keepdim=True)
+            return logits + scale * (neighbor_logits - sample_center) * active
+        if self.corr_refine_mode == "diffusion":
+            return logits + torch.tanh(scale) * (neighbor_logits - logits) * active
+        if self.corr_refine_mode == "additive":
+            return logits + scale * neighbor_logits * active
+        raise ValueError(f"Unknown corr_refine_mode: {self.corr_refine_mode}")
 
     def forward(
         self,
@@ -465,6 +564,9 @@ class HeterogeneousTransformer(nn.Module):
 
         for layer in self.layers:
             h_b, h_y = layer(h_b, h_y, corr_matrix)
+
+        if self.corr_feature_mixer is not None:
+            h_b = self.corr_feature_mixer(h_b, corr_matrix)
 
         logits, _ = self.decoder(h_b, h_y)
         logits = self._refine_logits_with_correlation(logits, corr_matrix)
@@ -496,8 +598,13 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         norm_type: str = "layer",
         use_correlation_attention_bias: bool = False,
         corr_attn_init: float = 1.0,
+        corr_topk: int = 0,
+        corr_threshold: float = 0.0,
         use_correlation_logit_refinement: bool = False,
         corr_refine_init: float = 0.5,
+        corr_refine_mode: str = "additive",
+        use_correlation_feature_mixer: bool = False,
+        corr_feature_mix_init: float = 0.1,
     ) -> None:
         super().__init__(
             num_devices=num_devices,
@@ -514,8 +621,13 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
             norm_type=norm_type,
             use_correlation_attention_bias=use_correlation_attention_bias,
             corr_attn_init=corr_attn_init,
+            corr_topk=corr_topk,
+            corr_threshold=corr_threshold,
             use_correlation_logit_refinement=use_correlation_logit_refinement,
             corr_refine_init=corr_refine_init,
+            corr_refine_mode=corr_refine_mode,
+            use_correlation_feature_mixer=use_correlation_feature_mixer,
+            corr_feature_mix_init=corr_feature_mix_init,
         )
 
 
@@ -535,13 +647,21 @@ def build_model_from_config(cfg: dict) -> nn.Module:
         return default if v is None else str(v)
 
     model_name = str(cfg.get("model_name", "base")).lower()
+    use_corr_attention = bool(cfg.get("use_correlation_attention_bias", False))
+    use_corr_refine = bool(cfg.get("use_correlation_logit_refinement", False))
     common = {
         "num_devices": cfg["num_devices"],
         "pilot_len": cfg["pilot_len"],
-        "use_correlation_attention_bias": bool(cfg.get("use_correlation_attention_bias", False)),
+        "use_correlation_attention_bias": use_corr_attention,
         "corr_attn_init": float(_get_num("corr_attn_init", 1.0)),
-        "use_correlation_logit_refinement": bool(cfg.get("use_correlation_logit_refinement", False)),
+        "corr_topk": int(_get_num("corr_topk", 0)),
+        "corr_threshold": float(_get_num("corr_threshold", 0.0)),
+        "use_correlation_logit_refinement": use_corr_refine,
         "corr_refine_init": float(_get_num("corr_refine_init", 0.5)),
+        "corr_refine_mode": _get_str("corr_refine_mode", "additive"),
+        "use_correlation_feature_mixer": bool(cfg.get("use_correlation_feature_mixer", False))
+        and bool(use_corr_attention or use_corr_refine),
+        "corr_feature_mix_init": float(_get_num("corr_feature_mix_init", 0.1)),
     }
 
     if model_name in {"large", "large_dim", "n400"}:

@@ -47,7 +47,12 @@ MODEL_NAME = "base"
 USE_CORRELATION_ATTENTION_BIAS = True
 USE_CORRELATION_LOGIT_REFINEMENT = True
 CORR_ATTN_INIT = 1.0
+CORR_TOPK = 24
+CORR_THRESHOLD = 0.10
 CORR_REFINE_INIT = 0.5
+CORR_REFINE_MODE = "centered"  # "centered", "additive", or "diffusion"
+USE_CORRELATION_FEATURE_MIXER = True
+CORR_FEATURE_MIX_INIT = 0.1
 DIM = 128
 NUM_LAYERS = 5
 NUM_HEADS = 8
@@ -63,7 +68,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = ROOT / "checkpoint/event_corrmatrix_260622"
+SAVE_DIR = ROOT / "checkpoint/addcorr_260629"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 100
@@ -110,7 +115,12 @@ def build_args() -> SimpleNamespace:
         use_correlation_attention_bias=USE_CORRELATION_ATTENTION_BIAS,
         use_correlation_logit_refinement=USE_CORRELATION_LOGIT_REFINEMENT,
         corr_attn_init=CORR_ATTN_INIT,
+        corr_topk=CORR_TOPK,
+        corr_threshold=CORR_THRESHOLD,
         corr_refine_init=CORR_REFINE_INIT,
+        corr_refine_mode=CORR_REFINE_MODE,
+        use_correlation_feature_mixer=USE_CORRELATION_FEATURE_MIXER,
+        corr_feature_mix_init=CORR_FEATURE_MIX_INIT,
         dim=DIM,
         num_layers=NUM_LAYERS,
         num_heads=NUM_HEADS,
@@ -164,6 +174,7 @@ def build_system_config(args: SimpleNamespace) -> SystemConfig:
 
 
 def build_model_config(args: SimpleNamespace) -> dict:
+    use_corr_path = bool(args.use_correlation_attention_bias or args.use_correlation_logit_refinement)
     return {
         "model_name": args.model_name,
         "num_devices": args.num_devices,
@@ -171,7 +182,12 @@ def build_model_config(args: SimpleNamespace) -> dict:
         "use_correlation_attention_bias": args.use_correlation_attention_bias,
         "use_correlation_logit_refinement": args.use_correlation_logit_refinement,
         "corr_attn_init": args.corr_attn_init,
+        "corr_topk": args.corr_topk,
+        "corr_threshold": args.corr_threshold,
         "corr_refine_init": args.corr_refine_init,
+        "corr_refine_mode": args.corr_refine_mode,
+        "use_correlation_feature_mixer": bool(args.use_correlation_feature_mixer and use_corr_path),
+        "corr_feature_mix_init": args.corr_feature_mix_init,
         "dim": args.dim,
         "num_layers": args.num_layers,
         "num_heads": args.num_heads,
