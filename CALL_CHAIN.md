@@ -286,3 +286,49 @@ USE_CORRELATION_LOGIT_REFINEMENT = False
 ```
 
 即使 `USE_CORRELATION_FEATURE_MIXER = True` 保持默认，`build_model_config` 和 `build_model_from_config` 也会在上述两个开关都为 False 时自动禁用 feature mixer，保证对照模型不使用相关性矩阵。
+
+## 10. 260707 噪声生成口径修正
+
+### 10.1 Measured SNR Noise
+
+当前将 `NOISE_MODE = "snr"` 改为与 MATLAB `awgn(x, SNR, "measured")` 对齐的口径。数据生成时先计算无噪声接收矩阵：
+
+```text
+BH = BAH
+```
+
+其中 `BH` 的尺寸为 `[batch, pilot_len, num_antennas]`。随后在每个样本的 `[pilot_len, num_antennas]` 维度上测量平均接收信号功率：
+
+```text
+signal_power = mean(|BH|^2)
+noise_var = signal_power * 10^(-SNR/10)
+```
+
+最后生成单位功率复高斯噪声并叠加：
+
+```text
+W ~ CN(0, noise_var)
+Y = BH + W
+```
+
+### 10.2 旧噪声公式保留方式
+
+旧版 `NOISE_MODE = "snr"` 使用的是大尺度接收功率近似：
+
+```text
+noise_var = sum_k(p_k g_k a_k) / pilot_len * 10^(-SNR/10)
+```
+
+该公式现在保留为：
+
+```python
+NOISE_MODE = "large_scale_snr"
+```
+
+因此当前推荐实验配置仍写：
+
+```python
+NOISE_MODE = "snr"
+```
+
+表示在无噪声接收信号 `BH` 上测量功率后再按 SNR 加噪。

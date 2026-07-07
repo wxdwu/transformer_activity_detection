@@ -110,14 +110,37 @@ class ActivityDataGenerator:
         noise_power_w = 10.0 ** ((noise_power_dbm - 30.0) / 10.0)
         return float(noise_power_w)
 
-    def _batch_noise_variance(self, pg: torch.Tensor, activity: torch.Tensor, pilot_len: int) -> torch.Tensor:
+    def _measured_snr_noise_variance(self, signal: torch.Tensor) -> torch.Tensor:
+        signal_power = (signal.abs() ** 2).mean(dim=(1, 2))
+        snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
+        return (snr_scale * signal_power).clamp_min(1e-30)
+
+    def _large_scale_snr_noise_variance(
+        self,
+        pg: torch.Tensor,
+        activity: torch.Tensor,
+        pilot_len: int,
+    ) -> torch.Tensor:
+        signal_power_per_pilot = (pg * activity).sum(dim=1) / float(pilot_len)
+        snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
+        return (snr_scale * signal_power_per_pilot).clamp_min(1e-30)
+
+    def _batch_noise_variance(
+        self,
+        pg: torch.Tensor,
+        activity: torch.Tensor,
+        pilot_len: int,
+        signal: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         if self.cfg.noise_mode == "thermal":
             thermal = self._noise_variance()
             return torch.full((pg.shape[0],), thermal, device=self.device, dtype=pg.dtype)
         if self.cfg.noise_mode == "snr":
-            signal_power_per_pilot = (pg * activity).sum(dim=1) / float(pilot_len)
-            snr_scale = 10.0 ** (-float(self.cfg.snr_db) / 10.0)
-            return (snr_scale * signal_power_per_pilot).clamp_min(1e-30)
+            if signal is None:
+                raise ValueError('noise_mode="snr" requires the noiseless receive signal.')
+            return self._measured_snr_noise_variance(signal).to(dtype=pg.dtype)
+        if self.cfg.noise_mode == "large_scale_snr":
+            return self._large_scale_snr_noise_variance(pg, activity, pilot_len)
         raise ValueError(f"Unknown noise_mode: {self.cfg.noise_mode}")
 
     @staticmethod
@@ -156,13 +179,16 @@ class ActivityDataGenerator:
         # trigger nearby users; no global activity-rate calibration is applied.
         a, activity_prob_map, event_centers = self._sample_activity(positions)
 
-        # Channels H and noise W
+        # Channels H and noiseless received signal BAH
         h = self._complex_gaussian(bsz, n, m)
-        noise_var = self._batch_noise_variance(pg, a, lp)
+        bh = (b * a.unsqueeze(1)) @ h
+
+        # In SNR mode, match MATLAB awgn(x, SNR, "measured"):
+        # measure average power on the noiseless receive matrix [Lp, M].
+        noise_var = self._batch_noise_variance(pg, a, lp, signal=bh)
         w = torch.sqrt(noise_var).view(bsz, 1, 1) * self._complex_gaussian(bsz, lp, m)
 
         # Y = B A H + W
-        bh = (b * a.unsqueeze(1)) @ h
         y = bh + w
 
         # Eq. (5): per-device real/imag features for pilots
@@ -190,6 +216,7 @@ class ActivityDataGenerator:
                     "pg": pg,  # [B, N], equivalent large-scale power factor
                     "beta": g,  # [B, N], large-scale fading gain
                     "h": h,  # [B, N, M], complex (ground-truth)
+                    "bh": bh,  # [B, Lp, M], complex noiseless received signal
                     "noise_var": noise_var.to(dtype=torch.float32),  # [B], per-sample noise variance
                     "positions": positions.to(torch.float32),  # [B, N, 2], user coordinates in meters
                     "event_centers": event_centers,  # [B, Kmax, 2], sampled event centers

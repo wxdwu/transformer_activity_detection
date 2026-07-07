@@ -28,3 +28,11 @@ network/model.py # 新增 CorrelationFeatureMixer，在 encoder 后、decoder �
 network/train.py、network/config.py # 新增 CORR_TOPK=24、CORR_THRESHOLD=0.10、CORR_REFINE_MODE="centered"、USE_CORRELATION_FEATURE_MIXER=True、CORR_FEATURE_MIX_INIT=0.1
 network/train.py、network/model.py # 当 USE_CORRELATION_ATTENTION_BIAS=False 且 USE_CORRELATION_LOGIT_REFINEMENT=False 时自动关闭 feature mixer，保证不加相关性对照不使用相关性矩阵
 CALL_CHAIN.md # 追加 260630 相关性路径改进说明；本次未新增辅助 loss，训练 loss 仍保持 batch 活跃比例 weighted BCE
+
+260707:
+5、修正 SNR 噪声生成口径：
+network/data.py # 将 NOISE_MODE="snr" 改为 measured SNR：先生成无噪声接收矩阵 BH=(B*A)@H，再按每个样本 mean(|BH|^2) 计算 noise_var=signal_power*10^(-SNR/10)
+network/data.py # 保留旧版大尺度近似公式为 NOISE_MODE="large_scale_snr"，用于复现实验或对比旧结果
+network/data.py # return_raw=True 时新增 bh，便于检查 measured SNR、信号功率和噪声方差
+network/train.py # 更新 NOISE_MODE 注释，说明 snr 为 measured on BAH，large_scale_snr 为旧公式
+CALL_CHAIN.md # 追加 260707 噪声生成口径修正说明
