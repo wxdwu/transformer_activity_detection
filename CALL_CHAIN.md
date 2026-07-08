@@ -332,3 +332,209 @@ NOISE_MODE = "snr"
 ```
 
 表示在无噪声接收信号 `BH` 上测量功率后再按 SNR 加噪。
+
+## 11. 260707 Varying L 实验脚本
+
+### 11.1 实验目的
+
+当前新增 `network/run_varying_l.py`，用于自动跑导频长度变化实验。默认导频长度为：
+
+```text
+L = [4, 6, 8, ..., 30]
+```
+
+其他训练、数据、模型参数默认继承 `network/train.py` 的当前设置，只覆盖 `pilot_len` 和保存路径。
+
+### 11.2 默认运行方式
+
+默认运行 addcorr 和 noaddcorr 两组实验：
+
+```bash
+python network/run_varying_l.py
+```
+
+脚本会分别训练 addcorr/noaddcorr 下的每个 L 到 `epoch=100`，每个实验保存到：
+
+```text
+checkpoint/varying_L_260707/addcorr/Lxx/
+```
+
+其中 `Lxx` 表示具体导频长度，例如 `L04`、`L30`。
+noaddcorr 对照会保存到：
+
+```text
+checkpoint/varying_L_260707/noaddcorr/Lxx/
+```
+
+### 11.3 输出结果
+
+每个 L 的 epoch 100 最终 loss 会汇总到同一个 CSV，使用 `mode` 列区分 addcorr/noaddcorr：
+
+```text
+checkpoint/varying_L_260707/final_loss_by_L.csv
+```
+
+并绘制包含 addcorr/noaddcorr 两条曲线的折线图：
+
+```text
+checkpoint/varying_L_260707/final_loss_by_L.png
+```
+
+如果当前 Python 环境没有 `matplotlib`，脚本会自动生成无依赖 SVG 版本：
+
+```text
+checkpoint/varying_L_260707/final_loss_by_L.svg
+```
+
+图中横坐标为导频长度 `L`，范围 `[4, 30]`；纵坐标为最终 epoch 的训练 loss；两条折线分别表示 addcorr 和 noaddcorr。
+
+### 11.4 对照和快速检查
+
+如果只想单独跑一条曲线用于调试：
+
+```bash
+python network/run_varying_l.py --modes addcorr
+python network/run_varying_l.py --modes noaddcorr
+```
+
+如果只想本地快速检查脚本是否能跑通：
+
+```bash
+python network/run_varying_l.py --pilot-lens 4,6 --epochs 1 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
+```
+
+## 12. 260707 Varying SNR 实验脚本
+
+### 12.1 实验目的
+
+当前新增 `network/run_varing_SNR.py`，用于自动跑信噪比变化实验。默认 SNR 为：
+
+```text
+SNR = [10, 12, 14, 16, 18, 20] dB
+```
+
+其他训练、数据、模型参数默认继承 `network/train.py` 的当前设置，只覆盖 `snr_db` 和保存路径。
+
+### 12.2 默认运行方式
+
+默认运行 addcorr 和 noaddcorr 两组实验：
+
+```bash
+python network/run_varing_SNR.py
+```
+
+脚本会分别训练 addcorr/noaddcorr 下的每个 SNR 到 `epoch=100`，每个实验保存到：
+
+```text
+checkpoint/varying_SNR_260707/addcorr/SNRxx/
+```
+
+其中 `SNRxx` 表示具体信噪比，例如 `SNR10`、`SNR20`。
+noaddcorr 对照会保存到：
+
+```text
+checkpoint/varying_SNR_260707/noaddcorr/SNRxx/
+```
+
+### 12.3 输出结果
+
+每个 SNR 的 epoch 100 最终 loss 会汇总到同一个 CSV，使用 `mode` 列区分 addcorr/noaddcorr：
+
+```text
+checkpoint/varying_SNR_260707/final_loss_by_SNR.csv
+```
+
+并绘制包含 addcorr/noaddcorr 两条曲线的折线图：
+
+```text
+checkpoint/varying_SNR_260707/final_loss_by_SNR.png
+```
+
+如果当前 Python 环境没有 `matplotlib`，脚本会自动生成无依赖 SVG 版本：
+
+```text
+checkpoint/varying_SNR_260707/final_loss_by_SNR.svg
+```
+
+图中横坐标为信噪比 `SNR`，范围 `[10, 20]`；纵坐标为最终 epoch 的训练 loss；两条折线分别表示 addcorr 和 noaddcorr。
+
+### 12.4 对照和快速检查
+
+如果只想单独跑一条曲线用于调试：
+
+```bash
+python network/run_varing_SNR.py --modes addcorr
+python network/run_varing_SNR.py --modes noaddcorr
+```
+
+如果只想本地快速检查脚本是否能跑通：
+
+```bash
+python network/run_varing_SNR.py --snrs 10,12 --epochs 1 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
+```
+
+## 13. 260707 Varying N 实验脚本
+
+### 13.1 实验目的
+
+当前新增 `network/run_varing_number_of_users.py`，用于自动跑用户数量变化实验。默认用户数量为：
+
+```text
+N = [50, 100, 150, 200, 250]
+```
+
+其他训练、数据、模型参数默认继承 `network/train.py` 的当前设置，只覆盖 `num_devices` 和保存路径。
+
+### 13.2 默认运行方式
+
+默认运行 addcorr 和 noaddcorr 两组实验：
+
+```bash
+python network/run_varing_number_of_users.py
+```
+
+脚本会分别训练 addcorr/noaddcorr 下的每个 N 到 `epoch=100`，每个实验保存到：
+
+```text
+checkpoint/varying_N_260707/addcorr/Nxxx/
+checkpoint/varying_N_260707/noaddcorr/Nxxx/
+```
+
+其中 `Nxxx` 表示具体用户数量，例如 `N050`、`N250`。
+
+### 13.3 输出结果
+
+每个 N 的 epoch 100 最终 loss 会汇总到同一个 CSV，使用 `mode` 列区分 addcorr/noaddcorr：
+
+```text
+checkpoint/varying_N_260707/final_loss_by_N.csv
+```
+
+并绘制包含 addcorr/noaddcorr 两条曲线的折线图：
+
+```text
+checkpoint/varying_N_260707/final_loss_by_N.png
+```
+
+如果当前 Python 环境没有 `matplotlib`，脚本会自动生成无依赖 SVG 版本：
+
+```text
+checkpoint/varying_N_260707/final_loss_by_N.svg
+```
+
+图中横坐标为用户数量 `N`，范围 `[50, 250]`；纵坐标为最终 epoch 的训练 loss；两条折线分别表示 addcorr 和 noaddcorr。
+
+### 13.4 调试命令
+
+如果只想单独跑一条曲线用于调试：
+
+```bash
+python network/run_varing_number_of_users.py --modes addcorr
+python network/run_varing_number_of_users.py --modes noaddcorr
+```
+
+如果只想本地快速检查脚本是否能跑通：
+
+```bash
+python network/run_varing_number_of_users.py --num-users 50 --epochs 1 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
+```

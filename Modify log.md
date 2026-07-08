@@ -36,3 +36,26 @@ network/data.py # 保留旧版大尺度近似公式为 NOISE_MODE="large_scale_s
 network/data.py # return_raw=True 时新增 bh，便于检查 measured SNR、信号功率和噪声方差
 network/train.py # 更新 NOISE_MODE 注释，说明 snr 为 measured on BAH，large_scale_snr 为旧公式
 CALL_CHAIN.md # 追加 260707 噪声生成口径修正说明
+
+260708:
+6、新增导频长度 L 变化实验入口：
+network/train.py # 将原 main 训练流程封装为 run_training(args)，直接运行 network/train.py 的行为保持不变，新增返回每个 epoch 的 loss/PM/PF/p_mean 历史
+network/train.py # GradScaler 新增 PyTorch 版本兼容：优先使用 torch.amp.GradScaler，旧版本回退到 torch.cuda.amp.GradScaler
+network/run_varying_l.py # 新增脚本，默认循环 L=[4,6,8,...,30]，分别跑 addcorr/noaddcorr，每个 L 训练到 epoch=100，并记录最终 loss
+network/run_varying_l.py # 输出合并 CSV 到 checkpoint/varying_L_260707/final_loss_by_L.csv，使用 mode 列区分 addcorr/noaddcorr；同一张图绘制两条 loss 曲线
+network/run_varying_l.py # 支持 --modes addcorr/noaddcorr 调试单条曲线；保留 --mode 作为旧单模式参数；支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--pilot-lens
+CALL_CHAIN.md # 追加 260707 varying-L 实验脚本说明和运行命令
+
+260708:
+7、新增信噪比 SNR 变化实验入口：
+network/run_varing_SNR.py # 新增脚本，默认循环 SNR=[10,12,14,16,18,20] dB，分别跑 addcorr/noaddcorr，每个 SNR 训练到 epoch=100，并记录最终 loss
+network/run_varing_SNR.py # 输出合并 CSV 到 checkpoint/varying_SNR_260707/final_loss_by_SNR.csv，使用 mode 列区分 addcorr/noaddcorr；同一张图绘制两条 loss 曲线
+network/run_varing_SNR.py # 支持 --modes addcorr/noaddcorr 调试单条曲线；保留 --mode 作为旧单模式参数；支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--snrs
+CALL_CHAIN.md # 追加 260707 varying-SNR 实验脚本说明和运行命令
+
+260708:
+8、新增用户数量 N 变化实验入口：
+network/run_varing_number_of_users.py # 新增脚本，默认循环 N=[50,100,150,200,250]，分别跑 addcorr/noaddcorr，每个 N 训练到 epoch=100，并记录最终 loss
+network/run_varing_number_of_users.py # 输出合并 CSV 到 checkpoint/varying_N_260707/final_loss_by_N.csv，使用 mode 列区分 addcorr/noaddcorr；同一张图绘制两条 loss 曲线
+network/run_varing_number_of_users.py # 支持 --modes addcorr/noaddcorr 调试单条曲线；保留 --mode 作为旧单模式参数；支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--num-users
+CALL_CHAIN.md # 追加 260707 varying-N 实验脚本说明和运行命令

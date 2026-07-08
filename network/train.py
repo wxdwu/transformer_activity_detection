@@ -201,8 +201,9 @@ def build_model_config(args: SimpleNamespace) -> dict:
     }
 
 
-def main() -> None:
-    args = build_args()
+def run_training(args: SimpleNamespace | None = None) -> dict[str, object]:
+    if args is None:
+        args = build_args()
     torch.manual_seed(args.seed)
 
     device = torch.device(args.device)
@@ -220,7 +221,10 @@ def main() -> None:
     model = build_model_from_config(model_cfg).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
-    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    else:
+        scaler = torch.cuda.amp.GradScaler(enabled=use_scaler)
     decay_epochs = sorted(int(x.strip()) for x in args.lr_decay_epochs.split(",") if x.strip())
 
     args.save_dir.mkdir(parents=True, exist_ok=True)
@@ -235,6 +239,7 @@ def main() -> None:
             f.write(f"Model: {json.dumps(model_cfg, sort_keys=True)}\n\n")
 
     best_pm = float("inf")
+    history: list[dict[str, float | int]] = []
     eval_cache = None
     if args.fixed_eval_set:
         eval_cache = [data_gen.sample_batch(args.batch_size) for _ in range(args.eval_batches)]
@@ -309,6 +314,17 @@ def main() -> None:
             f"PF@{args.eval_threshold:.2f}={pf:.6f} | p_mean={mean_prob:.4f} | "
             f"skip={skipped_nonfinite} | lr={lr_now:.2e}"
         )
+        history.append(
+            {
+                "epoch": epoch,
+                "loss": avg_loss,
+                "pm": pm,
+                "pf": pf,
+                "p_mean": mean_prob,
+                "skip": skipped_nonfinite,
+                "lr": lr_now,
+            }
+        )
         print(summary)
         if args.log_file:
             with args.log_file.open("a", encoding="utf-8") as f:
@@ -327,6 +343,16 @@ def main() -> None:
             torch.save(ckpt, args.save_dir / "best_pm.pt")
 
     print(f"Training done. Checkpoints saved in: {args.save_dir.resolve()}")
+    return {
+        "args": args,
+        "history": history,
+        "final": history[-1] if history else {},
+        "save_dir": str(args.save_dir.resolve()),
+    }
+
+
+def main() -> None:
+    run_training(build_args())
 
 
 if __name__ == "__main__":
