@@ -32,7 +32,17 @@ def parse_modes(raw: str | None) -> list[str]:
 
 def write_results_csv(path: Path, results: list[dict[str, float | int | str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["mode", "pilot_len", "loss", "pm", "pf", "p_mean", "epoch", "save_dir"]
+    fieldnames = [
+        "mode",
+        "signal_token_mode",
+        "pilot_len",
+        "loss",
+        "pm",
+        "pf",
+        "p_mean",
+        "epoch",
+        "save_dir",
+    ]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -160,13 +170,23 @@ def parse_args() -> argparse.Namespace:
         description="Train one model per pilot length L and plot final epoch loss vs L."
     )
     parser.add_argument("--pilot-lens", type=str, default="", help="Comma-separated L list. Default: 4,6,...,30.")
-    parser.add_argument("--out-dir", type=Path, default=ROOT / "checkpoint" / "varying_L_260707")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "checkpoint" / "varying_L_260720_covrows",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--steps-per-epoch", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--eval-batches", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--signal-token-mode",
+        choices=["flat", "covariance_rows"],
+        default=None,
+        help="Override the covariance signal encoding. Default inherits network/train.py.",
+    )
     parser.add_argument("--modes", type=str, default="", help="Comma-separated modes. Default: addcorr,noaddcorr.")
     parser.add_argument("--mode", choices=["addcorr", "noaddcorr"], default=None, help="Legacy single-mode shortcut.")
     parser.add_argument("--append-log", action="store_true", help="Append to existing per-L train.log files.")
@@ -199,6 +219,8 @@ def main() -> None:
                 args.device = resolve_device(cli.device)
             if cli.seed is not None:
                 args.seed = int(cli.seed)
+            if cli.signal_token_mode is not None:
+                args.signal_token_mode = cli.signal_token_mode
 
             if mode == "noaddcorr":
                 args.use_correlation_attention_bias = False
@@ -215,6 +237,7 @@ def main() -> None:
             final = dict(train_result["final"])
             row = {
                 "mode": mode,
+                "signal_token_mode": args.signal_token_mode,
                 "pilot_len": int(pilot_len),
                 "loss": float(final["loss"]),
                 "pm": float(final["pm"]),

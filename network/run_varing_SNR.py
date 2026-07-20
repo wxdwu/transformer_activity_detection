@@ -166,7 +166,11 @@ def parse_args() -> argparse.Namespace:
         description="Train one model per SNR value and plot final epoch loss vs SNR."
     )
     parser.add_argument("--snrs", type=str, default="", help="Comma-separated SNR list in dB. Default: 10,12,...,20.")
-    parser.add_argument("--out-dir", type=Path, default=ROOT / "checkpoint" / "varying_SNR_260707")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "checkpoint" / "varying_SNR_260720_covrows",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--steps-per-epoch", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)

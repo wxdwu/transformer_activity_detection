@@ -160,7 +160,11 @@ def parse_args() -> argparse.Namespace:
         description="Train one model per user count N and plot final epoch loss vs N."
     )
     parser.add_argument("--num-users", type=str, default="", help="Comma-separated N list. Default: 50,100,...,250.")
-    parser.add_argument("--out-dir", type=Path, default=ROOT / "checkpoint" / "varying_N_260707")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "checkpoint" / "varying_N_260720_covrows",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--steps-per-epoch", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)

@@ -37,6 +37,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
         "model": {
             "model_name": "base",
+            "signal_token_mode": "covariance_rows",
             "use_correlation_attention_bias": True,
             "use_correlation_logit_refinement": True,
             "corr_attn_init": 1.0,

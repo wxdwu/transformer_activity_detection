@@ -538,3 +538,176 @@ python network/run_varing_number_of_users.py --modes noaddcorr
 ```bash
 python network/run_varing_number_of_users.py --num-users 50 --epochs 1 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
 ```
+
+## 14. 260720 多协方差行 Token 结构
+
+### 14.1 修改原因
+
+论文原始接收信号路径先构造：
+
+```text
+C = Y Y^H / M
+x_y = [Re(vec(C)), Im(vec(C))]: [B, 2Lp^2]
+```
+
+随后使用一个线性层把完整协方差向量变成单个 signal token：
+
+```text
+[B, 2Lp^2] -> Linear(2Lp^2, D) -> [B, 1, D]
+```
+
+当前 `D=128`。当 `Lp=8` 时输入维度正好为 128；当 `Lp=30` 时，
+1800 维输入会被一次性映射到 128 维。varying-L 实验中，大 L 模型出现明显的
+优化平台和性能退化，因此本次从 signal token 结构上移除这一固定维度瓶颈，
+不修改事件数据、噪声生成和训练 loss。
+
+### 14.2 新增配置
+
+`network/train.py` 和 `network/config.py` 新增：
+
+```python
+SIGNAL_TOKEN_MODE = "covariance_rows"
+```
+
+支持两个模式：
+
+```text
+flat             原论文结构，2Lp^2 -> D，生成 1 个 signal token
+covariance_rows  新结构，按协方差矩阵行生成 Lp 个 signal tokens
+```
+
+默认使用 `covariance_rows`。需要复现原论文单 token 结构时设置：
+
+```python
+SIGNAL_TOKEN_MODE = "flat"
+```
+
+### 14.3 Covariance Row Tokens
+
+数据生成仍返回原有 `x_y: [B,2Lp^2]`，不改变 `network/data.py` 的输出接口。
+模型内部将实部和虚部分别恢复为 `[B,Lp,Lp]`，然后按行构造：
+
+```text
+r_i = [Re(C_i,:), Im(C_i,:)]
+r: [B, Lp, 2Lp]
+```
+
+所有协方差行共享同一个投影：
+
+```text
+h_y = Linear(2Lp, D)(r) + row_position
+h_y: [B, Lp, D]
+```
+
+在当前实验范围 `Lp<=30, D=128` 下，每个行 token 的输入维度最多为 60，
+不会发生原来的 `2Lp^2 -> 128` 一次性维度压缩。整体 signal 表示随 Lp 增长为
+`Lp*D`，新增导频观测会增加 signal token 数量。
+
+### 14.4 异构 Transformer 调用链
+
+异构 MHA 当前接收：
+
+```text
+device tokens: [B, N, D]
+signal tokens: [B, Ty, D]
+Ty = 1   when signal_token_mode="flat"
+Ty = Lp  when signal_token_mode="covariance_rows"
+```
+
+两类 token 仍使用不同的 Q/K/V、输出投影、FFN 和归一化参数。相关性 attention
+bias 仍只写入 device-device 的 `[N,N]` 区域，不作用于 signal token。
+
+decoder 使用全部 signal tokens 作为 queries，并以所有 device/signal tokens 作为
+keys 和 values。每个 signal query 得到一个 context，最后在 signal-token 维度求均值，
+生成用于用户检测的全局 context vector。Feature Mixer 和 Centered Logits
+Refinement 的位置和公式保持不变。
+
+### 14.5 对照公平性与旧 Checkpoint
+
+addcorr 和 noaddcorr 默认都使用相同的 `covariance_rows` signal 编码；两组实验的
+区别仍只有相关性 attention bias、feature mixer 和 logits refinement，loss 不变。
+
+旧 checkpoint 中没有 `signal_token_mode`。`build_model_from_config` 对缺失字段默认
+使用 `flat`，并且 flat 路径没有新增模型参数，因此旧 checkpoint 可以按原结构严格加载。
+
+### 14.6 Varying-L 验证方式
+
+新实验默认输出到独立目录，避免覆盖 260707 单 token 结果：
+
+```text
+checkpoint/varying_L_260720_covrows/
+```
+
+直接运行新的多行 token 实验：
+
+```bash
+python network/run_varying_l.py
+```
+
+脚本新增 `--signal-token-mode`，并在 CSV 中记录该字段。可在相同设置下分别运行：
+
+```bash
+python network/run_varying_l.py --signal-token-mode covariance_rows --out-dir checkpoint/varying_L_260720_covrows
+python network/run_varying_l.py --signal-token-mode flat --out-dir checkpoint/varying_L_260720_flat
+```
+
+新的默认训练、varying-SNR 和 varying-N 输出目录分别为：
+
+```text
+checkpoint/addcorr_260720_covrows/
+checkpoint/varying_SNR_260720_covrows/
+checkpoint/varying_N_260720_covrows/
+```
+
+多 signal-token attention 的 token 数从 `N+1` 增加到 `N+Lp`，计算量约随
+`(N+Lp)^2` 增长。在当前 `N=200, Lp<=30` 的实验范围内增幅受控，但服务器运行时
+仍应观察显存占用。
+
+## 15. Loss 随 Epoch 变化实验（260720）
+
+新增入口：
+
+- `network/run_loss_vs_epoch.py`
+
+脚本通过 `build_args()` 直接继承 `network/train.py` 的当前实验参数，包括
+`LP=10`、`EPOCHS=100`、事件驱动数据、measured-SNR 噪声和
+`signal_token_mode="covariance_rows"`，未修改训练流程或 loss 计算方式。
+
+默认按相同随机种子依次运行两组实验：
+
+```text
+addcorr    使用 train.py 当前的相关性 attention bias、feature mixer 和 logits refinement
+noaddcorr  关闭 correlation attention bias 和 logits refinement；feature mixer 随之自动关闭
+```
+
+服务器正式运行：
+
+```bash
+CUDA_VISIBLE_DEVICES=5 nohup python network/run_loss_vs_epoch.py > nohup_loss_vs_epoch.log 2>&1 &
+```
+
+默认输出目录：
+
+```text
+checkpoint/loss_vs_epoch_260720_covrows/
+```
+
+输出内容：
+
+```text
+addcorr/train.log、last.pt、best_pm.pt
+noaddcorr/train.log、last.pt、best_pm.pt
+loss_by_epoch.csv
+loss_vs_epoch.png
+```
+
+`loss_by_epoch.csv` 逐 epoch 记录两种模式的 loss、PM、PF、p_mean、skip 和学习率。
+折线图横坐标为 epoch，正式默认范围为 1 至 100；纵坐标为当个 epoch 的平均训练
+loss，两条曲线分别对应 addcorr 和 noaddcorr。若运行环境没有 matplotlib，脚本会
+自动输出 `loss_vs_epoch.svg`。
+
+仅用于快速检查时可以缩小训练规模：
+
+```bash
+python network/run_loss_vs_epoch.py --epochs 2 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
+```

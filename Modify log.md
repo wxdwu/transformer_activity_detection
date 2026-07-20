@@ -59,3 +59,23 @@ network/run_varing_number_of_users.py # 新增脚本，默认循环 N=[50,100,15
 network/run_varing_number_of_users.py # 输出合并 CSV 到 checkpoint/varying_N_260707/final_loss_by_N.csv，使用 mode 列区分 addcorr/noaddcorr；同一张图绘制两条 loss 曲线
 network/run_varing_number_of_users.py # 支持 --modes addcorr/noaddcorr 调试单条曲线；保留 --mode 作为旧单模式参数；支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--num-users
 CALL_CHAIN.md # 追加 260707 varying-N 实验脚本说明和运行命令
+
+260720:
+9、从结构上消除大导频长度下的单协方差 token 压缩瓶颈：
+network/model.py # 新增 signal_token_mode="covariance_rows"，将 x_y 恢复为复协方差矩阵并按行构造 [B,Lp,2Lp] 特征，共享投影为 [B,Lp,D] 多个 signal tokens
+network/model.py # 新增可学习 covariance_row_position，保留协方差行顺序；原 flat 模式继续使用 2Lp^2->D 的论文单 token 投影
+network/model.py # 扩展 HeterogeneousMHA、FFN、归一化和 ContextDecoder 支持 Ty 个 signal tokens；相关性 attention bias 仍只作用于 device-device 区域
+network/model.py # decoder 使用全部 signal tokens 作为 queries，分别生成 context 后在 signal-token 维求均值；Feature Mixer 和 Centered Logits Refinement 保持不变
+network/model.py # build_model_from_config 对旧 checkpoint 缺失 signal_token_mode 时默认使用 flat，保持旧模型参数和严格加载兼容
+network/train.py、network/config.py # 新训练默认 SIGNAL_TOKEN_MODE="covariance_rows"；训练 loss、事件数据和 measured-SNR 噪声逻辑不变
+network/run_varying_l.py # 新增 --signal-token-mode flat/covariance_rows，CSV 新增 signal_token_mode 字段；默认输出改为 checkpoint/varying_L_260720_covrows
+network/train.py、network/run_varing_SNR.py、network/run_varing_number_of_users.py # 新结构实验使用独立的 260720_covrows 保存目录，避免覆盖既有结果
+CALL_CHAIN.md # 追加第14节，记录问题原因、结构公式、调用链、兼容策略、运行命令和计算量变化
+
+260720:
+10、新增 loss 随 epoch 变化实验入口：
+network/run_loss_vs_epoch.py # 新增脚本，直接继承 train.py 当前参数（包括 LP=10、EPOCHS=100 和 covariance_rows），依次运行 addcorr/noaddcorr
+network/run_loss_vs_epoch.py # 逐 epoch 汇总 loss、PM、PF、p_mean、skip、学习率到 checkpoint/loss_vs_epoch_260720_covrows/loss_by_epoch.csv
+network/run_loss_vs_epoch.py # 在同一张图绘制 addcorr/noaddcorr 的 epoch 1-100 loss 曲线；有 matplotlib 时输出 PNG，否则回退为 SVG
+network/run_loss_vs_epoch.py # 支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--seed 和 --modes，便于本地小规模检查
+CALL_CHAIN.md # 追加第15节，记录实验参数继承关系、相关性对照设置、输出路径和服务器运行命令

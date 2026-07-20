@@ -38,6 +38,8 @@ def sparsify_correlation_matrix(
 # 1) 设备导频 token：x_1, ..., x_N，由缩放后的导频矩阵 B 的各列得到
 # 2) 接收信号 token：x_{N+1}，由接收信号协方差 C = YY^H / M 得到
 # 之所以叫 "heterogeneous"，是因为这两类 token 使用不同的投影、FFN 和归一化参数。
+# 当前还支持把单个接收信号 token 展开为 Lp 个协方差行 token，以避免在大 Lp 下
+# 直接把 2*Lp^2 维协方差向量压缩成一个固定维度表示。
 
 
 class TokenBatchNorm(nn.Module):
@@ -84,7 +86,7 @@ class HeterogeneousMHA(nn.Module):
     设备导频 token 和接收信号 token 参与同一个 attention 计算，
     但使用不同的 Q/K/V 投影参数：
     - x_1, ..., x_N 使用 Wq/Wk/Wv_B
-    - x_{N+1} 使用 Wq/Wk/Wv_Y
+    - 一个或多个接收信号 token 使用 Wq/Wk/Wv_Y
     多头输出投影也分成 Wo_B 和 Wo_Y 两套参数。
     """
 
@@ -118,8 +120,8 @@ class HeterogeneousMHA(nn.Module):
         self.wv_b = nn.Linear(dim, num_heads * head_dim, bias=False)
 
         # Step 0-2，对应论文 Eq. (10)-(12)：Y 类 token 使用另一套 Q/K/V 投影。
-        # 输入 x_y: [B, 1, D]
-        # 输出 Q_Y/K_Y/V_Y: [B, 1, H*Dh]
+        # 输入 x_y: [B, Ty, D]
+        # 输出 Q_Y/K_Y/V_Y: [B, Ty, H*Dh]
         self.wq_y = nn.Linear(dim, num_heads * head_dim, bias=False)
         self.wk_y = nn.Linear(dim, num_heads * head_dim, bias=False)
         self.wv_y = nn.Linear(dim, num_heads * head_dim, bias=False)
@@ -146,6 +148,7 @@ class HeterogeneousMHA(nn.Module):
         corr_matrix: torch.Tensor | None,
         bsz: int,
         n: int,
+        num_y_tokens: int,
         dtype: torch.dtype,
         device: torch.device,
     ) -> torch.Tensor | None:
@@ -160,7 +163,8 @@ class HeterogeneousMHA(nn.Module):
             corr_topk=self.corr_topk,
             corr_threshold=self.corr_threshold,
         )
-        mask = torch.zeros((bsz, 1, n + 1, n + 1), device=device, dtype=dtype)
+        total_tokens = n + num_y_tokens
+        mask = torch.zeros((bsz, 1, total_tokens, total_tokens), device=device, dtype=dtype)
         mask[:, :, :n, :n] = self.corr_attn_scale.to(dtype=dtype) * corr.unsqueeze(1)
         return mask
 
@@ -172,25 +176,26 @@ class HeterogeneousMHA(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # 输入：
         # x_b: [B, N, D]，N 个设备/用户导频 token。
-        # x_y: [B, 1, D]，1 个接收信号 token。
+        # x_y: [B, Ty, D]，一个或多个接收信号 token。
         bsz, n, _ = x_b.shape
-        # Step 1，对应论文 Eq. (10)-(12)：为全部 N+1 个 token 构造 Q/K/V。
+        num_y_tokens = x_y.shape[1]
+        # Step 1，对应论文 Eq. (10)-(12)：为全部 N+Ty 个 token 构造 Q/K/V。
         # B token 路径：
         #   wq_b/wk_b/wv_b: [B, N, D] -> [B, N, H*Dh]
         #   _split_heads:   [B, N, H*Dh] -> [B, N, H, Dh]
         # Y token 路径：
-        #   wq_y/wk_y/wv_y: [B, 1, D] -> [B, 1, H*Dh]
-        #   _split_heads:   [B, 1, H*Dh] -> [B, 1, H, Dh]
+        #   wq_y/wk_y/wv_y: [B, Ty, D] -> [B, Ty, H*Dh]
+        #   _split_heads:   [B, Ty, H*Dh] -> [B, Ty, H, Dh]
         # 沿 token 维 dim=1 拼接：
-        #   [B, N, H, Dh] + [B, 1, H, Dh] -> [B, N+1, H, Dh]
+        #   [B, N, H, Dh] + [B, Ty, H, Dh] -> [B, N+Ty, H, Dh]
         q = torch.cat([self._split_heads(self.wq_b(x_b)), self._split_heads(self.wq_y(x_y))], dim=1)
         k = torch.cat([self._split_heads(self.wk_b(x_b)), self._split_heads(self.wk_y(x_y))], dim=1)
         v = torch.cat([self._split_heads(self.wv_b(x_b)), self._split_heads(self.wv_y(x_y))], dim=1)
 
         # Step 2：调整维度以调用 PyTorch 的 scaled_dot_product_attention。
-        # q/k/v 当前是 [B, N+1, H, Dh]。
-        # PyTorch attention 需要 [B, H, N+1, Dh]。
-        qh = q.permute(0, 2, 1, 3)  # [B, H, N+1, Dh]
+        # q/k/v 当前是 [B, N+Ty, H, Dh]。
+        # PyTorch attention 需要 [B, H, N+Ty, Dh]。
+        qh = q.permute(0, 2, 1, 3)  # [B, H, N+Ty, Dh]
         kh = k.permute(0, 2, 1, 3)
         vh = v.permute(0, 2, 1, 3)
 
@@ -199,13 +204,14 @@ class HeterogeneousMHA(nn.Module):
         #   Eq. (13) alpha = Q K^H / sqrt(Dh)，计算 token 间 compatibility。
         #   Eq. (14) beta  = softmax(alpha)，得到 attention 权重。
         #   Eq. (15) ctx   = beta V，对 value 做加权求和。
-        # 输入 qh/kh/vh: [B, H, N+1, Dh]
-        # 输出 ctx:      [B, H, N+1, Dh]
+        # 输入 qh/kh/vh: [B, H, N+Ty, Dh]
+        # 输出 ctx:      [B, H, N+Ty, Dh]
         drop_p = self.attn_drop.p if self.training else 0.0
         attn_mask = self._build_correlation_attention_mask(
             corr_matrix=corr_matrix,
             bsz=bsz,
             n=n,
+            num_y_tokens=num_y_tokens,
             dtype=qh.dtype,
             device=qh.device,
         )
@@ -216,20 +222,20 @@ class HeterogeneousMHA(nn.Module):
             attn_mask=attn_mask,
             dropout_p=drop_p,
             is_causal=False,
-        )  # [B, H, N+1, Dh]
+        )  # [B, H, N+Ty, Dh]
         # Step 4：把 head 维放回 token 维后面，方便按 B/Y token 切分。
-        # [B, H, N+1, Dh] -> [B, N+1, H, Dh]
-        ctx = ctx.permute(0, 2, 1, 3)  # [B, N+1, H, Dh]
+        # [B, H, N+Ty, Dh] -> [B, N+Ty, H, Dh]
+        ctx = ctx.permute(0, 2, 1, 3)  # [B, N+Ty, H, Dh]
 
         # Step 5：按拼接顺序切回两类 token。
         # ctx_b: [B, N, H, Dh]，前 N 个设备 token。
-        # ctx_y: [B, 1, H, Dh]，最后 1 个接收信号 token。
+        # ctx_y: [B, Ty, H, Dh]，最后 Ty 个接收信号 token。
         ctx_b = ctx[:, :n]
         ctx_y = ctx[:, n:]
 
         # Step 6，对应论文 Eq. (16)-(17)：把多个 attention head 的结果合并回 D 维。
         # ctx_b: [B, N, H, Dh], wo_b: [H, D, Dh] -> out_b: [B, N, D]
-        # ctx_y: [B, 1, H, Dh], wo_y: [H, D, Dh] -> out_y: [B, 1, D]
+        # ctx_y: [B, Ty, H, Dh], wo_y: [H, D, Dh] -> out_y: [B, Ty, D]
         # einsum "bnth,tdh->bnd" 表示对 head 维 t 和 head_dim 维 h 求和，
         # 保留 batch 维 b、token 维 n、输出特征维 d。
         out_b = torch.einsum("bnth,tdh->bnd", ctx_b, self.wo_b)
@@ -327,8 +333,9 @@ class HeterogeneousEncoderLayer(nn.Module):
 class ContextDecoder(nn.Module):
     """解码层，对应论文 Eq. (24)-(26) 和 Appendix A。
 
-    contextual block 使用最终的接收信号 token x_{N+1}^{[L]} 作为 query，
-    使用 N 个设备 token 加 x_{N+1}^{[L]} 作为 keys/values，计算 context vector x_c。
+    contextual block 使用最终的一个或多个接收信号 token 作为 queries，
+    使用 N 个设备 token 加全部接收信号 token 作为 keys/values。多个 query 的
+    context 在 token 维求均值，得到单个 context vector x_c。
     output block 再将每个设备 token 与 x_c 做匹配打分，得到活动概率 P_n。
     """
 
@@ -362,16 +369,16 @@ class ContextDecoder(nn.Module):
         return x.view(b, t, self.num_heads, self.head_dim)
 
     def forward(self, x_b: torch.Tensor, x_y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # Eq. (24)：context attention。Query 来自 Y；
-        # keys/values 来自 {设备导频 token + Y}，输出一个 context vector。
+        # Eq. (24)：context attention。Queries 来自全部 Y tokens；
+        # keys/values 来自 {设备导频 tokens + Y tokens}。
         bsz, n, d = x_b.shape
 
-        q = self._split_heads(self.wq_c(x_y))  # [B,1,H,Dh]
+        q = self._split_heads(self.wq_c(x_y))  # [B,Ty,H,Dh]
         k = torch.cat([self._split_heads(self.wk_cb(x_b)), self._split_heads(self.wk_cy(x_y))], dim=1)
         v = torch.cat([self._split_heads(self.wv_cb(x_b)), self._split_heads(self.wv_cy(x_y))], dim=1)
 
-        qh = q.permute(0, 2, 1, 3)  # [B,H,1,Dh]
-        kh = k.permute(0, 2, 1, 3)  # [B,H,N+1,Dh]
+        qh = q.permute(0, 2, 1, 3)  # [B,H,Ty,Dh]
+        kh = k.permute(0, 2, 1, 3)  # [B,H,N+Ty,Dh]
         vh = v.permute(0, 2, 1, 3)
 
         drop_p = self.attn_drop.p if self.training else 0.0
@@ -382,9 +389,10 @@ class ContextDecoder(nn.Module):
             attn_mask=None,
             dropout_p=drop_p,
             is_causal=False,
-        )  # [B,H,1,Dh]
-        ctx = ctx.permute(0, 2, 1, 3)  # [B,1,H,Dh]
-        xc = torch.einsum("bnth,tdh->bnd", ctx, self.wo_c).squeeze(1)  # [B,D]
+        )  # [B,H,Ty,Dh]
+        ctx = ctx.permute(0, 2, 1, 3)  # [B,Ty,H,Dh]
+        context_tokens = torch.einsum("bnth,tdh->bnd", ctx, self.wo_c)  # [B,Ty,D]
+        xc = context_tokens.mean(dim=1)  # [B,D]
 
         # Eq. (25)：计算 context vector x_c 与每个 device token 的匹配分数。
         # Eq. (26)：通过 sigmoid 将分数转换成每个设备的活动概率 P_n。
@@ -463,6 +471,7 @@ class HeterogeneousTransformer(nn.Module):
         corr_refine_mode: str = "additive",
         use_correlation_feature_mixer: bool = False,
         corr_feature_mix_init: float = 0.1,
+        signal_token_mode: str = "flat",
     ) -> None:
         super().__init__()
         self.num_devices = num_devices
@@ -472,13 +481,26 @@ class HeterogeneousTransformer(nn.Module):
         self.corr_refine_mode = str(corr_refine_mode).lower()
         self.corr_topk = int(corr_topk)
         self.corr_threshold = float(corr_threshold)
+        self.signal_token_mode = str(signal_token_mode).lower()
+        if self.signal_token_mode not in {"flat", "covariance_rows"}:
+            raise ValueError(
+                f"Unknown signal_token_mode: {signal_token_mode}. "
+                'Expected "flat" or "covariance_rows".'
+            )
 
         # 论文 Eq. (5) 和 Eq. (7)：每个设备导频 b_n 表示为
         # [Re(b_n), Im(b_n)]，维度为 R^{2Lp}，再用共享的 W_B^in 投影。
         self.embed_b = nn.Linear(2 * pilot_len, dim)
-        # 论文 Eq. (6) 和 Eq. (7)：Y 通过 vec(C) 表示，其中 C = YY^H / M，
-        # 因此输入维度与基站天线数 M 无关。
-        self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)
+        # flat 保留论文 Eq. (6)-(7) 的单 token 路径。
+        # covariance_rows 将 C 的每一行表示为 [Re(C_i,:), Im(C_i,:)]，共享
+        # 2Lp -> D 的投影并保留 Lp 个 signal tokens，避免 2Lp^2 -> D 的一次性压缩。
+        if self.signal_token_mode == "flat":
+            self.embed_y = nn.Linear(2 * pilot_len * pilot_len, dim)
+            self.register_parameter("covariance_row_position", None)
+        else:
+            self.embed_y = nn.Linear(2 * pilot_len, dim)
+            self.covariance_row_position = nn.Parameter(torch.empty(1, pilot_len, dim))
+            nn.init.normal_(self.covariance_row_position, mean=0.0, std=0.02)
 
         # 论文 Section III-B：堆叠 L 个异构编码层。
         self.layers = nn.ModuleList(
@@ -551,6 +573,21 @@ class HeterogeneousTransformer(nn.Module):
             return logits + scale * neighbor_logits * active
         raise ValueError(f"Unknown corr_refine_mode: {self.corr_refine_mode}")
 
+    def _embed_signal_tokens(self, x_y: torch.Tensor) -> torch.Tensor:
+        bsz = x_y.shape[0]
+        lp = self.pilot_len
+        expected_dim = 2 * lp * lp
+        if x_y.ndim != 2 or x_y.shape[1] != expected_dim:
+            raise ValueError(f"x_y must have shape [B,{expected_dim}], got {tuple(x_y.shape)}")
+
+        if self.signal_token_mode == "flat":
+            return self.embed_y(x_y).unsqueeze(1)
+
+        real_cov = x_y[:, : lp * lp].reshape(bsz, lp, lp)
+        imag_cov = x_y[:, lp * lp :].reshape(bsz, lp, lp)
+        covariance_rows = torch.cat([real_cov, imag_cov], dim=-1)
+        return self.embed_y(covariance_rows) + self.covariance_row_position
+
     def forward(
         self,
         x_b: torch.Tensor,
@@ -560,7 +597,7 @@ class HeterogeneousTransformer(nn.Module):
         # x_b: [B, N, 2Lp]，保存设备导频的实部/虚部特征。
         # x_y: [B, 2Lp^2]，保存向量化协方差的实部/虚部特征。
         h_b = self.embed_b(x_b)
-        h_y = self.embed_y(x_y).unsqueeze(1)
+        h_y = self._embed_signal_tokens(x_y)
 
         for layer in self.layers:
             h_b, h_y = layer(h_b, h_y, corr_matrix)
@@ -605,6 +642,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
         corr_refine_mode: str = "additive",
         use_correlation_feature_mixer: bool = False,
         corr_feature_mix_init: float = 0.1,
+        signal_token_mode: str = "flat",
     ) -> None:
         super().__init__(
             num_devices=num_devices,
@@ -628,6 +666,7 @@ class HeterogeneousTransformerLargeDim(HeterogeneousTransformer):
             corr_refine_mode=corr_refine_mode,
             use_correlation_feature_mixer=use_correlation_feature_mixer,
             corr_feature_mix_init=corr_feature_mix_init,
+            signal_token_mode=signal_token_mode,
         )
 
 
@@ -662,6 +701,8 @@ def build_model_from_config(cfg: dict) -> nn.Module:
         "use_correlation_feature_mixer": bool(cfg.get("use_correlation_feature_mixer", False))
         and bool(use_corr_attention or use_corr_refine),
         "corr_feature_mix_init": float(_get_num("corr_feature_mix_init", 0.1)),
+        # Older checkpoints do not contain this key and must keep the paper's flat path.
+        "signal_token_mode": _get_str("signal_token_mode", "flat").lower(),
     }
 
     if model_name in {"large", "large_dim", "n400"}:

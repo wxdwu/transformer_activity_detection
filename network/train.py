@@ -24,7 +24,7 @@ from network.model import build_model_from_config
 # =========================
 N = 200  # number of users
 M = 32  # number of antennas
-LP = 30  # pilot length
+LP = 10  # pilot length
 ACTIVITY_PROB = 0.1
 CELL_RADIUS_M = 500.0
 PMAX_DBM = 23.0
@@ -44,6 +44,7 @@ CORRELATION_LENGTH_M = 0.0
 # Model Parameters
 # =========================
 MODEL_NAME = "base"
+SIGNAL_TOKEN_MODE = "covariance_rows"  # "covariance_rows" or paper baseline "flat"
 USE_CORRELATION_ATTENTION_BIAS = True
 USE_CORRELATION_LOGIT_REFINEMENT = True
 CORR_ATTN_INIT = 1.0
@@ -68,7 +69,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = ROOT / "checkpoint/addcorr_260630"
+SAVE_DIR = ROOT / "checkpoint/addcorr_260720_covrows"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 100
@@ -112,6 +113,7 @@ def build_args() -> SimpleNamespace:
         background_activity_prob=BACKGROUND_ACTIVITY_PROB,
         correlation_length_m=CORRELATION_LENGTH_M,
         model_name=MODEL_NAME,
+        signal_token_mode=SIGNAL_TOKEN_MODE,
         use_correlation_attention_bias=USE_CORRELATION_ATTENTION_BIAS,
         use_correlation_logit_refinement=USE_CORRELATION_LOGIT_REFINEMENT,
         corr_attn_init=CORR_ATTN_INIT,
@@ -179,6 +181,7 @@ def build_model_config(args: SimpleNamespace) -> dict:
         "model_name": args.model_name,
         "num_devices": args.num_devices,
         "pilot_len": args.pilot_len,
+        "signal_token_mode": args.signal_token_mode,
         "use_correlation_attention_bias": args.use_correlation_attention_bias,
         "use_correlation_logit_refinement": args.use_correlation_logit_refinement,
         "corr_attn_init": args.corr_attn_init,
