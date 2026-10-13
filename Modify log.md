@@ -79,3 +79,42 @@ network/run_loss_vs_epoch.py # 逐 epoch 汇总 loss、PM、PF、p_mean、skip�
 network/run_loss_vs_epoch.py # 在同一张图绘制 addcorr/noaddcorr 的 epoch 1-100 loss 曲线；有 matplotlib 时输出 PNG，否则回退为 SVG
 network/run_loss_vs_epoch.py # 支持 --epochs、--steps-per-epoch、--batch-size、--eval-batches、--device、--seed 和 --modes，便于本地小规模检查
 CALL_CHAIN.md # 追加第15节，记录实验参数继承关系、相关性对照设置、输出路径和服务器运行命令
+
+261013:
+11、新增传统协方差方法的 Monte Carlo 对比实验：
+covariance_based/detector.py # 实现已知大尺度增益下的协方差最大似然检测，活跃变量限制在 [0,1]，使用闭式坐标下降和 Sherman-Morrison 逆矩阵更新
+covariance_based/detector.py # 使用 complex128、共同物理功率缩放和每轮逆矩阵重建，返回连续活跃估计、似然历史、轮数和收敛状态
+covariance_based/run_monte_carlo.py # 默认继承 train.py 系统设置，每次只调用 sample_batch(1, return_raw=True)，Monte Carlo 循环统计 PM/PF，不训练网络
+covariance_based/run_monte_carlo.py # 新增 L、N、SNR 参数扫描、门限扫描、逐次和汇总 CSV、完整配置 JSON，以及可选 PNG/SVG 图，输出到 checkpoint/covariance_261013
+covariance_based/run_monte_carlo.py # 默认已知生成器噪声方差并记录 known_generated；不向检测器提供真实标签、活跃数、相关矩阵、事件位置、瞬时信道或活跃概率
+covariance_based/test_detector.py # 新增闭式解、约束边界、非正交导频似然下降、物理缩放一致性、全不活跃和随机种子测试
+covariance_based/README.md # 记录文献公式、数据一致性、噪声假设、MC 归一化口径、运行命令和输出路径；传统似然不与神经网络 BCE 混作同一 loss
+CALL_CHAIN.md # 追加第16节，保留原有文字；记录传统方法调用链、实验设置和验证入口
+
+261013:
+12、修复本机协方差实验的 OpenMP 运行库冲突：
+covariance_based/run_monte_carlo.py # 在 macOS 上导入 NumPy/PyTorch 前，默认设置 MKL_THREADING_LAYER=SEQUENTIAL，避免重复 OpenMP 初始化导致 OMP: Error #15
+covariance_based/__init__.py # 包导入路径同样在加载 NumPy 前设置兼容后端，支持模块运行与包导入
+covariance_based/README.md # 更新 cat 环境运行指令、macOS 兼容策略和已有环境设置优先规则；不使用 KMP_DUPLICATE_LIB_OK 强行绕过错误
+CALL_CHAIN.md # 追加16.5节；Linux 服务器行为、实验参数、检测算法和用户当前的 MC_TIMES 设置不变
+验证 # 在 cat 环境清除外部 MKL_THREADING_LAYER 和 KMP_DUPLICATE_LIB_OK 后，直接脚本完成3次 Monte Carlo 并输出 CSV/PNG/SVG；模块入口完成1次；7项算法单元测试全部通过
+
+261013:
+13、协方差实验图采用10的指数次方坐标：
+covariance_based/run_monte_carlo.py # 参考本地 HT 论文图4，将 PM-PF 图统一为横轴 PM、纵轴 PF 的双对数图，采用 LogFormatterMathtext 显示10的整数指数次方
+covariance_based/run_monte_carlo.py # L/N/SNR 参数扫描图保持横轴线性，PM/PF 纵轴改为对数；默认下界为1e-4，更小的非零概率自动扩展显示范围
+covariance_based/run_monte_carlo.py # 0或nan仅在绘图时屏蔽，保留CSV真实数值，不用非零下界替代0；增加主次网格
+covariance_based/test_detector.py # 新增对数坐标、PM/PF方向、极小概率和0/nan处理测试
+covariance_based/README.md、CALL_CHAIN.md # 更新坐标格式及显示下界说明；检测算法、数据分布和Monte Carlo次数保持不变
+covariance_based/run_monte_carlo.py # 参数横轴固定为完整扫描范围及取值，避免0/nan导致横轴自动缩小或出现错误范围
+验证 # 10项算法/绘图单元测试通过；L=4/16各2次小规模检查成功；已有single图从CSV重绘，CSV哈希保持不变，PNG视觉检查通过
+
+261013:
+14、仅将协方差方法导频长度临时设为8：
+covariance_based/run_monte_carlo.py # 新增 PILOT_LEN_OVERRIDE=8，仅在协方差实验配置中覆盖导频长度；设回None即可恢复继承train.py，命令行及L扫描可覆盖此值
+covariance_based/README.md、CALL_CHAIN.md # 记录临时覆盖及恢复方法；network/train.py仍为LP=10，其余场景参数和Monte Carlo次数不变
+
+261013:
+15、L=8测试后恢复协方差方法的默认导频长度：
+covariance_based/run_monte_carlo.py # 将 PILOT_LEN_OVERRIDE 恢复为None，重新继承train.py的LP=10；其余配置及已有实验结果保持不变
+covariance_based/README.md、CALL_CHAIN.md # 同步当前默认配置并追加恢复记录

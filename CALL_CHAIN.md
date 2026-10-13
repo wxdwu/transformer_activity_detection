@@ -711,3 +711,147 @@ loss，两条曲线分别对应 addcorr 和 noaddcorr。若运行环境没有 ma
 ```bash
 python network/run_loss_vs_epoch.py --epochs 2 --steps-per-epoch 1 --batch-size 2 --eval-batches 1 --device cpu
 ```
+
+## 16. 传统协方差最大似然对比实验（261013）
+
+分支：`main3_261013`。
+
+新增独立目录 `covariance_based/`，实现原始 HT 论文中的传统 Covariance
+baseline：协方差最大似然估计与盒约束坐标下降，不训练神经网络。
+
+### 16.1 文件与调用链
+
+```text
+covariance_based/run_monte_carlo.py
+  -> network/train.py: build_args(), build_system_config()
+  -> network/data.py: ActivityDataGenerator.sample_batch(1, return_raw=True)
+  -> 原始复数 B、Y、noise_var；标签只用于误差统计
+  -> C = Y Y^H / M
+  -> covariance_based/detector.py: covariance_mle_activity()
+  -> 汇总所有 Monte Carlo 实例的漏检/虚警次数
+  -> summary.csv、trial_results.csv、pm_pf_curve.csv、run_config.json
+  -> 可选 PNG/SVG 图（安装 matplotlib 时）
+```
+
+`covariance_based/test_detector.py` 验证闭式解、[0,1] 边界、目标函数下降、
+物理缩放一致性、全不活跃情况和随机种子可复现性。
+`covariance_based/README.md` 说明算法、已知噪声假设、运行参数和输出。
+
+### 16.2 检测器目标
+
+```text
+Sigma = B diag(a) B^H + noise_var I
+min_a logdet(Sigma) + trace(Sigma^-1 C)
+0 <= a_n <= 1
+
+v = Sigma^-1 b_n
+q = b_n^H v
+r = v^H C v
+delta = clip((r-q)/q^2, -a_n, 1-a_n)
+a_n += delta
+Sigma^-1 -= delta/(1+delta*q) * v v^H
+```
+
+每轮访问所有设备一次，默认随机排列；每轮重新构造逆矩阵以控制数值漂移。
+使用 complex128 和共同物理功率缩放，避免路径损耗导致的极小数值。
+不能将独立归一化的 `x_b` 和 `x_y` 直接代入传统物理协方差模型。
+
+检测器仅使用导频矩阵、接收协方差和噪声方差，不使用真实标签、真实活跃数、
+用户相关矩阵、事件位置、瞬时信道或先验活跃概率。
+默认已知生成器返回的噪声方差；这一设置记录为 `known_generated`，正式对比时
+应说明该接收端信息假设。`--receiver-noise-variance` 可提供固定噪声估计值。
+
+### 16.3 Monte Carlo 统计
+
+每次只生成一个接入实例；默认 `MC_TIMES=1000`，没有 epoch、训练集或训练 batch。
+沿用当前 `train.py` 的系统参数：N=200、M=32、Lp=10、SNR=20、事件驱动活跃、
+measured-SNR 噪声。`--config` 可显式改为从实验 JSON 读取系统配置。
+
+```text
+PM = 所有实例的漏检总数 / 所有实例的活跃设备总数
+PF = 所有实例的虚警总数 / 所有实例的非活跃设备总数
+```
+
+不丢弃全不活跃实例，不用真实活跃数选 top-k。若分母为零，记录为 nan。
+协方差输出是连续活跃估计，不是校准概率；似然目标不等于 Transformer 的 BCE
+loss。主要使用 PM-PF 曲线或同一 PF 下的 PM 进行算法性能比较。
+
+### 16.4 运行与输出路径
+
+在项目根目录激活环境后执行；计算在 CPU 上运行，无需分配 GPU：
+
+```bash
+python covariance_based/run_monte_carlo.py --mc-times 1000
+python covariance_based/run_monte_carlo.py --sweep L --mc-times 1000
+python covariance_based/run_monte_carlo.py --sweep N --mc-times 1000
+python covariance_based/run_monte_carlo.py --sweep SNR --mc-times 1000
+```
+
+默认扫描值：L=[4,6,...,30]、N=[50,100,150,200,250]、SNR=[10,12,14,16,18,20]。
+支持 `--values` 自定义范围，其余系统参数保持继承值。
+输出根目录由 `run_monte_carlo.py` 的 `OUTPUT_ROOT` 或 `--out-dir` 控制：
+
+```text
+checkpoint/covariance_261013/single/
+checkpoint/covariance_261013/varying_L/
+checkpoint/covariance_261013/varying_N/
+checkpoint/covariance_261013/varying_SNR/
+```
+
+小规模检查与算法测试：
+
+```bash
+python covariance_based/run_monte_carlo.py --mc-times 3 --max-sweeps 20 --no-plot --out-dir /tmp/covariance_smoke
+python -m unittest covariance_based.test_detector -v
+```
+
+改变 `MC_TIMES` 调整统计样本数；改变 `MAX_SWEEPS` 和 `TOLERANCE` 调整求解精度。
+结果记录收敛比例；达到迭代上限的实例仍保留。`summary.csv` 中运行时间包含
+协方差构造和求解，不包含数据生成和写文件。
+
+### 16.5 macOS 运行库兼容（261013）
+
+`covariance_based/run_monte_carlo.py` 和包入口 `covariance_based/__init__.py`
+在 macOS 上、导入 NumPy/PyTorch 之前，将未显式设置的
+`MKL_THREADING_LAYER` 默认为 `SEQUENTIAL`，避免 MKL 与 PyTorch 初始化
+重复的 OpenMP 运行库而触发 `OMP: Error #15`。Linux 服务器不应用此设置；
+已有的显式环境设置不被覆盖。此改动仅调整 MKL 的线程后端，不改变检测器、
+数据分布、场景参数、Monte Carlo 次数或统计方式。
+
+本机应使用已安装依赖的 `cat` 环境；`base` 缺少 NumPy，不能直接运行本实验。
+在新的 Python 进程中执行：
+
+```bash
+conda activate cat
+python covariance_based/run_monte_carlo.py --mc-times 3
+```
+
+旧版本脚本可在命令前加 `MKL_THREADING_LAYER=SEQUENTIAL`；
+不要用 `KMP_DUPLICATE_LIB_OK=TRUE` 强行允许重复运行库。
+
+### 16.6 对数坐标绘图（261013）
+
+参考本地 HT 论文图4，将 `pm_pf_curve.png/svg` 改为横轴 PM、纵轴 PF，
+双轴以10为底的对数坐标，主刻度显示为10的整数指数次方。默认显示
+10^-4 至10^0；如果实际非零概率更小，会自动扩展下界，不裁掉这些数据。
+`PLOT_MIN_PROBABILITY=1e-4` 控制默认下界。
+
+`detection_vs_L/N/SNR.png/svg` 的参数横轴保持线性，PM/PF 纵轴改为同样的
+对数格式，增加主/次网格。仅绘图时将0和未定义的概率屏蔽为曲线断点；
+不将0替换成非零值，不改动CSV、概率统计、检测算法或实验参数。
+`test_detector.py` 新增坐标方向、对数格式、极小概率及0/nan处理的绘图测试。
+参数横轴显式使用完整扫描范围及扫描值刻度，避免屏蔽0后自动缩小横轴范围。
+
+### 16.7 协方差方法临时使用 L=8（261013）
+
+`covariance_based/run_monte_carlo.py` 新增 `PILOT_LEN_OVERRIDE=8`，仅覆盖
+协方差实验的导频长度，其余参数仍继承当前 `network/train.py`。
+Transformer 的 `LP=10` 不变。测试后将 `PILOT_LEN_OVERRIDE` 改为 `None`
+即可恢复参数继承，不必修改 Transformer 配置。
+命令行 `--pilot-len` 的优先级更高；L扫描仍采用各扫描值，N/SNR扫描保持L=8。
+默认输出目录不变；需要保留旧结果时，使用独立的 `--out-dir`。
+
+### 16.8 恢复协方差导频长度继承（261013）
+
+L=8测试完成后，将 `PILOT_LEN_OVERRIDE` 恢复为 `None`，协方差方法重新
+继承 `network/train.py` 的 `LP=10`。其余设置、绘图格式和已有测试结果不变。
