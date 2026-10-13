@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+<rect width="900" height="560" fill="white"/>
+<text x="450" y="28" text-anchor="middle" font-family="Arial" font-size="20">Final Training Loss vs SNR</text>
+<line x1="90" y1="45" x2="90" y2="480" stroke="#222" stroke-width="1.5"/>
+<line x1="90" y1="480" x2="865" y2="480" stroke="#222" stroke-width="1.5"/>
+<line x1="90.00" y1="45" x2="90.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="90.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">10</text>
+<line x1="245.00" y1="45" x2="245.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="245.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">12</text>
+<line x1="400.00" y1="45" x2="400.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="400.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">14</text>
+<line x1="555.00" y1="45" x2="555.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="555.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">16</text>
+<line x1="710.00" y1="45" x2="710.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="710.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">18</text>
+<line x1="865.00" y1="45" x2="865.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="865.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">20</text>
+<line x1="90" y1="480.00" x2="865" y2="480.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="484.00" text-anchor="end" font-family="Arial" font-size="13">0.0518</text>
+<line x1="90" y1="393.00" x2="865" y2="393.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="397.00" text-anchor="end" font-family="Arial" font-size="13">0.0599</text>
+<line x1="90" y1="306.00" x2="865" y2="306.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="310.00" text-anchor="end" font-family="Arial" font-size="13">0.0681</text>
+<line x1="90" y1="219.00" x2="865" y2="219.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="223.00" text-anchor="end" font-family="Arial" font-size="13">0.0762</text>
+<line x1="90" y1="132.00" x2="865" y2="132.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="136.00" text-anchor="end" font-family="Arial" font-size="13">0.0843</text>
+<line x1="90" y1="45.00" x2="865" y2="45.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="49.00" text-anchor="end" font-family="Arial" font-size="13">0.0925</text>
+<text x="450" y="535" text-anchor="middle" font-family="Arial" font-size="16">SNR (dB)</text>
+<text x="22" y="280" text-anchor="middle" font-family="Arial" font-size="16" transform="rotate(-90 22 280)">loss</text>
+<polyline points="90.00,388.94 245.00,410.63 400.00,423.04 555.00,432.17 710.00,435.36 865.00,450.00" fill="none" stroke="#1f77b4" stroke-width="3"/>
+<circle cx="90.00" cy="388.94" r="4.5" fill="#1f77b4"/>
+<circle cx="245.00" cy="410.63" r="4.5" fill="#1f77b4"/>
+<circle cx="400.00" cy="423.04" r="4.5" fill="#1f77b4"/>
+<circle cx="555.00" cy="432.17" r="4.5" fill="#1f77b4"/>
+<circle cx="710.00" cy="435.36" r="4.5" fill="#1f77b4"/>
+<circle cx="865.00" cy="450.00" r="4.5" fill="#1f77b4"/>
+<line x1="700" y1="63" x2="728" y2="63" stroke="#1f77b4" stroke-width="3"/>
+<text x="736" y="67" font-family="Arial" font-size="14">addcorr</text>
+<polyline points="90.00,75.00 245.00,109.08 400.00,142.07 555.00,131.65 710.00,154.67 865.00,161.67" fill="none" stroke="#d62728" stroke-width="3"/>
+<circle cx="90.00" cy="75.00" r="4.5" fill="#d62728"/>
+<circle cx="245.00" cy="109.08" r="4.5" fill="#d62728"/>
+<circle cx="400.00" cy="142.07" r="4.5" fill="#d62728"/>
+<circle cx="555.00" cy="131.65" r="4.5" fill="#d62728"/>
+<circle cx="710.00" cy="154.67" r="4.5" fill="#d62728"/>
+<circle cx="865.00" cy="161.67" r="4.5" fill="#d62728"/>
+<line x1="700" y1="87" x2="728" y2="87" stroke="#d62728" stroke-width="3"/>
+<text x="736" y="91" font-family="Arial" font-size="14">noaddcorr</text>
+</svg>

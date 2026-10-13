@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+<rect width="900" height="560" fill="white"/>
+<text x="450" y="28" text-anchor="middle" font-family="Arial" font-size="20">Final Training Loss vs Pilot Length</text>
+<line x1="90" y1="45" x2="90" y2="480" stroke="#222" stroke-width="1.5"/>
+<line x1="90" y1="480" x2="865" y2="480" stroke="#222" stroke-width="1.5"/>
+<line x1="90.00" y1="45" x2="90.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="90.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">4</text>
+<line x1="149.62" y1="45" x2="149.62" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="149.62" y="504" text-anchor="middle" font-family="Arial" font-size="13">6</text>
+<line x1="209.23" y1="45" x2="209.23" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="209.23" y="504" text-anchor="middle" font-family="Arial" font-size="13">8</text>
+<line x1="268.85" y1="45" x2="268.85" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="268.85" y="504" text-anchor="middle" font-family="Arial" font-size="13">10</text>
+<line x1="328.46" y1="45" x2="328.46" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="328.46" y="504" text-anchor="middle" font-family="Arial" font-size="13">12</text>
+<line x1="388.08" y1="45" x2="388.08" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="388.08" y="504" text-anchor="middle" font-family="Arial" font-size="13">14</text>
+<line x1="447.69" y1="45" x2="447.69" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="447.69" y="504" text-anchor="middle" font-family="Arial" font-size="13">16</text>
+<line x1="507.31" y1="45" x2="507.31" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="507.31" y="504" text-anchor="middle" font-family="Arial" font-size="13">18</text>
+<line x1="566.92" y1="45" x2="566.92" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="566.92" y="504" text-anchor="middle" font-family="Arial" font-size="13">20</text>
+<line x1="626.54" y1="45" x2="626.54" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="626.54" y="504" text-anchor="middle" font-family="Arial" font-size="13">22</text>
+<line x1="686.15" y1="45" x2="686.15" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="686.15" y="504" text-anchor="middle" font-family="Arial" font-size="13">24</text>
+<line x1="745.77" y1="45" x2="745.77" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="745.77" y="504" text-anchor="middle" font-family="Arial" font-size="13">26</text>
+<line x1="805.38" y1="45" x2="805.38" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="805.38" y="504" text-anchor="middle" font-family="Arial" font-size="13">28</text>
+<line x1="865.00" y1="45" x2="865.00" y2="480" stroke="#ddd" stroke-width="1"/>
+<text x="865.00" y="504" text-anchor="middle" font-family="Arial" font-size="13">30</text>
+<line x1="90" y1="480.00" x2="865" y2="480.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="484.00" text-anchor="end" font-family="Arial" font-size="13">-0.0010</text>
+<line x1="90" y1="393.00" x2="865" y2="393.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="397.00" text-anchor="end" font-family="Arial" font-size="13">0.0294</text>
+<line x1="90" y1="306.00" x2="865" y2="306.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="310.00" text-anchor="end" font-family="Arial" font-size="13">0.0597</text>
+<line x1="90" y1="219.00" x2="865" y2="219.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="223.00" text-anchor="end" font-family="Arial" font-size="13">0.0901</text>
+<line x1="90" y1="132.00" x2="865" y2="132.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="136.00" text-anchor="end" font-family="Arial" font-size="13">0.1205</text>
+<line x1="90" y1="45.00" x2="865" y2="45.00" stroke="#e6e6e6" stroke-width="1"/>
+<text x="80" y="49.00" text-anchor="end" font-family="Arial" font-size="13">0.1509</text>
+<text x="450" y="535" text-anchor="middle" font-family="Arial" font-size="16">Pilot length L</text>
+<text x="22" y="280" text-anchor="middle" font-family="Arial" font-size="16" transform="rotate(-90 22 280)">loss</text>
+<polyline points="90.00,158.97 149.62,227.06 209.23,276.44 268.85,321.02 328.46,352.47 388.08,378.19 447.69,395.53 507.31,404.82 566.92,417.40 626.54,433.10 686.15,440.36 745.77,440.83 805.38,445.79 865.00,450.00" fill="none" stroke="#1f77b4" stroke-width="3"/>
+<circle cx="90.00" cy="158.97" r="4.5" fill="#1f77b4"/>
+<circle cx="149.62" cy="227.06" r="4.5" fill="#1f77b4"/>
+<circle cx="209.23" cy="276.44" r="4.5" fill="#1f77b4"/>
+<circle cx="268.85" cy="321.02" r="4.5" fill="#1f77b4"/>
+<circle cx="328.46" cy="352.47" r="4.5" fill="#1f77b4"/>
+<circle cx="388.08" cy="378.19" r="4.5" fill="#1f77b4"/>
+<circle cx="447.69" cy="395.53" r="4.5" fill="#1f77b4"/>
+<circle cx="507.31" cy="404.82" r="4.5" fill="#1f77b4"/>
+<circle cx="566.92" cy="417.40" r="4.5" fill="#1f77b4"/>
+<circle cx="626.54" cy="433.10" r="4.5" fill="#1f77b4"/>
+<circle cx="686.15" cy="440.36" r="4.5" fill="#1f77b4"/>
+<circle cx="745.77" cy="440.83" r="4.5" fill="#1f77b4"/>
+<circle cx="805.38" cy="445.79" r="4.5" fill="#1f77b4"/>
+<circle cx="865.00" cy="450.00" r="4.5" fill="#1f77b4"/>
+<line x1="700" y1="63" x2="728" y2="63" stroke="#1f77b4" stroke-width="3"/>
+<text x="736" y="67" font-family="Arial" font-size="14">addcorr</text>
+<polyline points="90.00,75.00 149.62,124.10 209.23,185.35 268.85,243.48 328.46,293.52 388.08,334.06 447.69,347.92 507.31,371.40 566.92,392.31 626.54,408.65 686.15,413.60 745.77,431.16 805.38,438.50 865.00,443.05" fill="none" stroke="#d62728" stroke-width="3"/>
+<circle cx="90.00" cy="75.00" r="4.5" fill="#d62728"/>
+<circle cx="149.62" cy="124.10" r="4.5" fill="#d62728"/>
+<circle cx="209.23" cy="185.35" r="4.5" fill="#d62728"/>
+<circle cx="268.85" cy="243.48" r="4.5" fill="#d62728"/>
+<circle cx="328.46" cy="293.52" r="4.5" fill="#d62728"/>
+<circle cx="388.08" cy="334.06" r="4.5" fill="#d62728"/>
+<circle cx="447.69" cy="347.92" r="4.5" fill="#d62728"/>
+<circle cx="507.31" cy="371.40" r="4.5" fill="#d62728"/>
+<circle cx="566.92" cy="392.31" r="4.5" fill="#d62728"/>
+<circle cx="626.54" cy="408.65" r="4.5" fill="#d62728"/>
+<circle cx="686.15" cy="413.60" r="4.5" fill="#d62728"/>
+<circle cx="745.77" cy="431.16" r="4.5" fill="#d62728"/>
+<circle cx="805.38" cy="438.50" r="4.5" fill="#d62728"/>
+<circle cx="865.00" cy="443.05" r="4.5" fill="#d62728"/>
+<line x1="700" y1="87" x2="728" y2="87" stroke="#d62728" stroke-width="3"/>
+<text x="736" y="91" font-family="Arial" font-size="14">noaddcorr</text>
+</svg>
