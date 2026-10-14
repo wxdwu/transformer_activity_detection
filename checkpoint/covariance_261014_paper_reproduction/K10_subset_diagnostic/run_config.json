@@ -1,0 +1,17 @@
+{
+  "purpose": "conditional diagnostic, not the all-trial experiment",
+  "true_active_count": 10,
+  "source_root": "/Users/aochen/Research/Correlated Activation/transformer_activity_detection/checkpoint/covariance_261014_paper_reproduction",
+  "source_mc_times": [
+    5000,
+    5000,
+    5000
+  ],
+  "selected_trials": [
+    669,
+    669,
+    669
+  ],
+  "detector_uses_true_K": false,
+  "new_physical_samples_generated": false
+}

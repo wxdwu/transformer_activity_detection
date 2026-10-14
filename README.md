@@ -7,8 +7,8 @@ This repo reproduces the core part of:
 
 Scope of this version:
 
-- Implement transformer-based active user/device detection only.
-- Do **not** include user correlation / event-driven co-activity module yet.
+- Implement heterogeneous Transformer device activity detection for event-triggered access.
+- Include covariance-row signal tokens and geometry-informed attention, feature propagation and logit refinement.
 
 ## Files
 
@@ -42,25 +42,53 @@ Install:
 pip install -r requirements.txt
 ```
 
-Edit experiment settings in `config.json`, then run training with:
+Run commands from the project root, not from inside `network/`. Activate a
+Python environment with a CUDA-enabled PyTorch build for GPU training.
+The current training entry points read constants from `network/train.py`,
+not `config.json`. Current scene: N=200, L=10, M=32, radius=500 m, measured
+SNR=20 dB, event lambda=1, sigma=100 m, peak trigger=0.5, background=0.005
+and at most 3 events. The signal token mode is `covariance_rows`.
+
+To train both addcorr and noaddcorr for 100 epochs and plot loss vs epoch:
 
 ```bash
-python network/train.py
+python network/run_loss_vs_epoch.py --device cuda
 ```
 
-The shared config controls the system parameters, model shape, training loop, and evaluation/detection defaults:
+The runner saves separate per-mode train.log, last.pt and best_pm.pt files,
+plus loss_by_epoch.csv and loss_vs_epoch.png, under
+`checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/`.
+Noaddcorr disables all geometry modules while keeping the same scene and
+covariance-row encoding. Plain `python network/train.py` trains only the mode
+selected by its constants; it does not parse training command-line overrides.
 
-- `network_train`: settings used by `network/train.py`, including nested `system` and `model`.
-- `network_evaluate`: settings used by `network/evaluate.py`.
-- `CE_methods_compare`: settings used by `CE_methods/compare.py`.
-- `network_compare_active_indices`: settings used by `network/compare_active_indices.py`.
-- `plot_plot_amp_nmse_vs_iter`: settings used by `plot/plot_amp_nmse_vs_iter.py`.
-
-Command-line arguments are still available for temporary overrides, for example:
+For a short server check using the real training batch size:
 
 ```bash
-python network/train.py --epochs 2 --steps_per_epoch 10 --batch_size 16
+python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2 --out-dir checkpoint/server_smoke_261014
 ```
+
+Sweep runners also train both modes and inherit the same event settings:
+
+```bash
+python network/run_varying_l.py --device cuda --pilot-lens 4,6,8,10,12,14,16
+python network/run_varing_SNR.py --device cuda
+python network/run_varing_number_of_users.py --device cuda
+```
+
+The L runner defaults to 4,6,...,30 unless the list is supplied. SNR sweeps
+10,12,...,20 and N sweeps 50,100,...,250; only the swept physical field changes.
+Use separate GPUs and nohup log files for concurrent experiments. Do not run
+two jobs with the same output root. The default AMP dtype is BF16; check GPU
+support before formal training and use AMP_DTYPE="fp16" in train.py if needed.
+Local CPU smoke tests do not validate server CUDA compatibility or GPU memory.
+
+Copy the complete experiment directories back after training, including CSVs,
+plots, logs and both modes' epoch-100 last.pt files with their saved configs.
+For a new PM-PF comparison, pass these new weights explicitly to
+`network/run_pm_pf_comparison.py` with --giht-ckpt, --ht-ckpt and a new --out-dir;
+its default paths still refer to the older 260720 experiment. Old-scene weights
+must not be mixed with the new event scene.
 
 Evaluate PM/PF curve:
 

@@ -27,14 +27,25 @@ from network.data import ActivityDataGenerator, SystemConfig
 from network.train import build_args, build_system_config
 
 
-MC_TIMES = 100
+MC_TIMES = 1000
 PILOT_LEN_OVERRIDE = None  # None inherits network/train.py; set an integer for a local override.
+USE_PAPER_EVENT_TEST_SETTINGS = False  # Default inherits the Transformer scene; True enables the legacy temporary preset.
+PAPER_EVENT_TEST_SETTINGS = {
+    "num_devices": 100,
+    "pilot_len": 8,
+    "cell_radius_m": 250.0,
+    "noise_mode": "thermal",
+    "noise_power_dbm_hz": -169.0,
+    "bandwidth_hz": 10e6,
+    "activity_mode": "event",
+}
 MAX_SWEEPS = 100
 TOLERANCE = 1e-4
 THRESHOLD = 0.5
 NUM_THRESHOLDS = 101
 SEED = 42
-OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261013"
+OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261014_sigma100_trigger0p5_lambda1_mc1000_event"
+PAPER_EVENT_TEST_OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261014_paper_event"
 PLOT_MIN_PROBABILITY = 1e-4
 DEFAULT_SWEEPS = {
     "L": ("pilot_len", list(range(4, 31, 2))),
@@ -101,6 +112,8 @@ def experiment_system(args: argparse.Namespace) -> SystemConfig:
         if not args.config.is_file():
             raise FileNotFoundError(f"Experiment config not found: {args.config}")
         cfg = system_config_from_experiment(load_experiment_config(args.config))
+    if USE_PAPER_EVENT_TEST_SETTINGS:
+        cfg = replace(cfg, **PAPER_EVENT_TEST_SETTINGS)
     if PILOT_LEN_OVERRIDE is not None:
         cfg = replace(cfg, pilot_len=PILOT_LEN_OVERRIDE)
     overrides = {f.name: getattr(args, f.name) for f in fields(SystemConfig) if getattr(args, f.name) is not None}
@@ -110,6 +123,8 @@ def experiment_system(args: argparse.Namespace) -> SystemConfig:
 def experiment_points(cfg: SystemConfig, args: argparse.Namespace) -> list[tuple[str, float | str, SystemConfig]]:
     if args.sweep == "none":
         return [("none", "", cfg)]
+    if args.sweep == "SNR" and cfg.noise_mode == "thermal":
+        raise ValueError("SNR sweep requires --noise-mode snr or large_scale_snr; fixed thermal noise ignores snr_db.")
     name, defaults = DEFAULT_SWEEPS[args.sweep]
     values = defaults if args.values is None else args.values
     points = []
@@ -231,6 +246,50 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def summarize_activity_counts(counts: list[int], num_devices: int) -> dict:
+    values = np.asarray(counts)
+    if num_devices < 1 or values.ndim != 1 or not values.size:
+        raise ValueError("Activity counts must be a nonempty one-dimensional sequence.")
+    if not np.isfinite(values).all() or np.any(values != np.floor(values)) or np.any((values < 0) | (values > num_devices)):
+        raise ValueError("Activity counts must be integers in [0, num_devices].")
+    values = values.astype(np.int64)
+    nonempty = values[values > 0]
+    return {
+        "mc_times": int(values.size), "min_active": int(values.min()), "max_active": int(values.max()),
+        "mean_active": float(values.mean()), "median_active": float(np.median(values)),
+        "p90_active": float(np.percentile(values, 90)), "p95_active": float(np.percentile(values, 95)),
+        "p99_active": float(np.percentile(values, 99)), "zero_active_trials": int(np.sum(values == 0)),
+        "nonempty_trials": int(nonempty.size), "min_active_nonempty": int(nonempty.min()) if nonempty.size else None,
+        "mean_active_nonempty": float(nonempty.mean()) if nonempty.size else None,
+        "mean_activity_ratio": float(values.mean() / num_devices),
+        "histogram_by_active_count": np.bincount(values, minlength=num_devices + 1).tolist(),
+    }
+
+
+def save_activity_count_stats(out_dir: Path) -> list[dict]:
+    # Read generated truth counts, not the detector's estimated support sizes.
+    groups: dict[tuple[str, ...], list[int]] = {}
+    with (out_dir / "trial_results.csv").open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            key = tuple(row[name] for name in POINT_FIELDS)
+            groups.setdefault(key, []).append(int(row["active"]))
+    records = []
+    for key, counts in groups.items():
+        metadata = dict(zip(POINT_FIELDS, key))
+        for name in ("N", "M", "L"):
+            metadata[name] = int(metadata[name])
+        metadata["snr_db"] = float(metadata["snr_db"])
+        stats = summarize_activity_counts(counts, metadata["N"])
+        records.append({**metadata, **stats})
+        print(f"Activity counts {metadata['sweep']}={metadata['sweep_value']}: "
+              f"K={stats['min_active']}..{stats['max_active']}, mean={stats['mean_active']:.4f}, "
+              f"p95={stats['p95_active']:g}, p99={stats['p99_active']:g}, "
+              f"empty={stats['zero_active_trials']}/{stats['mc_times']}", flush=True)
+    (out_dir / "activity_count_stats.json").write_text(
+        json.dumps(records, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    return records
+
+
 def positive_plot_values(values: list[float]) -> np.ndarray:
     values = np.asarray(values, dtype=float)
     return np.where(np.isfinite(values) & (values > 0.0), values, np.nan)
@@ -311,10 +370,12 @@ def main(argv: list[str] | None = None) -> None:
     points = experiment_points(cfg, args)
     for _, _, system in points:
         validate_system(system)
-    out_dir = args.out_dir or OUTPUT_ROOT / ("single" if args.sweep == "none" else f"varying_{args.sweep}")
+    output_root = PAPER_EVENT_TEST_OUTPUT_ROOT if USE_PAPER_EVENT_TEST_SETTINGS else OUTPUT_ROOT
+    out_dir = args.out_dir or output_root / ("single" if args.sweep == "none" else f"varying_{args.sweep}")
     out_dir.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(1)
     settings = {**vars(args), "out_dir": str(out_dir.resolve()), "system_config": asdict(cfg),
+                "use_paper_event_test_settings": USE_PAPER_EVENT_TEST_SETTINGS,
                 "points": [{"sweep": sweep, "value": value, "system_config": asdict(system)} for sweep, value, system in points],
                 "solver": "box-constrained covariance MLE with coordinate descent", "solver_device": "cpu",
                 "noise_variance_source": "known_generated" if args.receiver_noise_variance is None else "fixed_receiver_estimate"}
@@ -336,6 +397,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Completed {sweep}={value} | PM@{args.threshold:.2f}={summary['PM']:.6f} "
                   f"PF@{args.threshold:.2f}={summary['PF']:.6f} | mean sweeps={summary['mean_sweeps']:.1f} "
                   f"converged={summary['converged_fraction']:.1%}", flush=True)
+    save_activity_count_stats(out_dir)
     if not args.no_plot:
         plot_results(out_dir, summaries, all_curves, args.sweep)
     print(f"Saved results to: {out_dir.resolve()}", flush=True)

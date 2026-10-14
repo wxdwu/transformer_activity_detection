@@ -81,6 +81,175 @@ class CovarianceMLETests(unittest.TestCase):
             covariance_mle_activity(b, np.array([[1, 1j], [0, 1]]), 0.1)
 
 
+@unittest.skipUnless(find_spec("torch"), "Configuration tests require torch.")
+class CovarianceExperimentConfigTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import covariance_based.run_monte_carlo as runner
+        cls.runner = runner
+
+    def test_temporary_settings_and_restoration(self) -> None:
+        from dataclasses import asdict
+        runner = self.runner
+        inherited = runner.build_system_config(runner.build_args())
+        with patch.object(runner, "USE_PAPER_EVENT_TEST_SETTINGS", True), patch.object(runner, "PILOT_LEN_OVERRIDE", None):
+            cfg = runner.experiment_system(runner.parse_args([]))
+        self.assertEqual(asdict(cfg), {**asdict(inherited), **runner.PAPER_EVENT_TEST_SETTINGS})
+        self.assertEqual(cfg.activity_mode, "event")
+        self.assertEqual(cfg.event_sigma_m, inherited.event_sigma_m)
+        with patch.object(runner, "USE_PAPER_EVENT_TEST_SETTINGS", False), patch.object(runner, "PILOT_LEN_OVERRIDE", None):
+            restored = runner.experiment_system(runner.parse_args([]))
+        self.assertEqual(asdict(restored), asdict(inherited))
+
+    def test_default_monte_carlo_inherits_transformer_scene(self) -> None:
+        from dataclasses import asdict
+        runner = self.runner
+        args = runner.parse_args([])
+        self.assertFalse(runner.USE_PAPER_EVENT_TEST_SETTINGS)
+        self.assertIsNone(runner.PILOT_LEN_OVERRIDE)
+        self.assertEqual(args.mc_times, 1000)
+        self.assertEqual(asdict(runner.experiment_system(args)),
+                         asdict(runner.build_system_config(runner.build_args())))
+        self.assertEqual(runner.OUTPUT_ROOT.parent, runner.ROOT / "checkpoint")
+
+    def test_low_load_defaults_are_aligned(self) -> None:
+        from network.config import DEFAULT_CONFIG
+        runner = self.runner
+        cfg = runner.experiment_system(runner.parse_args([]))
+        self.assertEqual((cfg.num_devices, cfg.num_antennas, cfg.pilot_len), (200, 32, 10))
+        self.assertEqual((cfg.event_lambda, cfg.event_trigger_prob), (1.0, 0.5))
+        self.assertEqual((cfg.event_sigma_m, cfg.background_activity_prob), (100.0, 0.005))
+        self.assertEqual((cfg.cell_radius_m, cfg.noise_mode, cfg.snr_db), (500.0, "snr", 20.0))
+        for other in (runner.SystemConfig(), runner.SystemConfig(**DEFAULT_CONFIG["network_train"]["system"])):
+            self.assertEqual((other.event_lambda, other.event_trigger_prob), (1.0, 0.5))
+            self.assertEqual(other.event_sigma_m, 100.0)
+        self.assertEqual(runner.OUTPUT_ROOT.name, "covariance_261014_sigma100_trigger0p5_lambda1_mc1000_event")
+
+    def test_shared_generator_uses_measured_receive_power(self) -> None:
+        from dataclasses import replace
+        import torch
+        runner = self.runner
+        cfg = replace(runner.experiment_system(runner.parse_args([])), noise_mode="snr")
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(123)
+            raw = runner.ActivityDataGenerator(cfg, torch.device("cpu")).sample_batch(3, return_raw=True)
+        expected = ((raw["bh"].abs() ** 2).mean(dim=(1, 2)) * 10 ** (-cfg.snr_db / 10)).clamp_min(1e-30)
+        torch.testing.assert_close(raw["noise_var"], expected, rtol=1e-6, atol=0)
+        self.assertEqual(tuple(raw["s"].shape), (3, cfg.pilot_len, cfg.num_devices))
+
+    def test_event_response_uses_configured_scale_and_background(self) -> None:
+        from dataclasses import replace
+        import torch
+        runner = self.runner
+        cfg = replace(runner.experiment_system(runner.parse_args([])), num_devices=3)
+        generator = runner.ActivityDataGenerator(cfg, torch.device("cpu"))
+        positions = torch.tensor([[[0.0, 0.0], [cfg.event_sigma_m, 0.0], [2 * cfg.event_sigma_m, 0.0]]])
+        centers = torch.zeros(1, cfg.event_max_count, 2)
+        with torch.random.fork_rng(devices=[]), patch.object(generator, "_sample_positions_m", return_value=centers):
+            with patch.object(torch, "poisson", return_value=torch.ones(1)) as poisson:
+                _, probabilities, _ = generator._sample_event_activity(positions)
+                torch.testing.assert_close(poisson.call_args.args[0], torch.tensor([1.0]))
+            expected = 0.005 + 0.995 * 0.5 * torch.exp(-torch.tensor([[0.0, 0.5, 2.0]]))
+            torch.testing.assert_close(probabilities, expected)
+            with patch.object(torch, "poisson", return_value=torch.zeros(1)):
+                _, background, _ = generator._sample_event_activity(positions)
+                torch.testing.assert_close(background, torch.full((1, 3), 0.005))
+        old = runner.ActivityDataGenerator(replace(cfg, event_lambda=1.0, event_trigger_prob=0.9), torch.device("cpu"))
+        torch.testing.assert_close(generator._correlation_from_positions(positions), old._correlation_from_positions(positions))
+
+    def test_geometry_distance_scale_follows_event_scale(self) -> None:
+        from dataclasses import replace
+        import torch
+        runner = self.runner
+        cfg = replace(runner.experiment_system(runner.parse_args([])), num_devices=2)
+        positions = torch.tensor([[[0.0, 0.0], [cfg.event_sigma_m, 0.0]]])
+        generator = runner.ActivityDataGenerator(cfg, torch.device("cpu"))
+        corr = generator._correlation_from_positions(positions)
+        torch.testing.assert_close(corr[0, 0, 1], torch.exp(torch.tensor(-0.25)))
+        torch.testing.assert_close(corr[0].diagonal(), torch.zeros(2))
+        old = runner.ActivityDataGenerator(replace(cfg, event_sigma_m=120.0), torch.device("cpu"))
+        self.assertLess(float(corr[0, 0, 1]), float(old._correlation_from_positions(positions)[0, 0, 1]))
+
+    def test_explicit_command_line_settings_take_priority(self) -> None:
+        runner = self.runner
+        with patch.object(runner, "USE_PAPER_EVENT_TEST_SETTINGS", True), patch.object(runner, "PILOT_LEN_OVERRIDE", None):
+            args = runner.parse_args(["--num-users", "150", "--pilot-len", "12", "--cell-radius-m", "300",
+                                      "--noise-mode", "snr", "--activity-mode", "independent"])
+            cfg = runner.experiment_system(args)
+        self.assertEqual((cfg.num_devices, cfg.pilot_len, cfg.cell_radius_m), (150, 12, 300.0))
+        self.assertEqual((cfg.noise_mode, cfg.activity_mode), ("snr", "independent"))
+
+    def test_independent_reference_keeps_paper_defaults_and_separate_output(self) -> None:
+        from covariance_based.run_independent_reference import PaperSystem, REFERENCE_OUTPUT_DIR, experiment_system, parse_args
+        runner = self.runner
+        for preset_enabled in (False, True):
+            with self.subTest(preset_enabled=preset_enabled), patch.object(runner, "USE_PAPER_EVENT_TEST_SETTINGS", preset_enabled), \
+                    patch.object(runner, "PAPER_EVENT_TEST_SETTINGS", {"num_devices": 200, "pilot_len": 30}):
+                args = parse_args([])
+                cfg = experiment_system(args)
+                self.assertEqual(cfg, PaperSystem())
+                self.assertEqual((cfg.activity_mode, cfg.activity_prob), ("independent", 0.1))
+                self.assertEqual(args.out_dir, REFERENCE_OUTPUT_DIR)
+                self.assertNotEqual(args.out_dir, runner.PAPER_EVENT_TEST_OUTPUT_ROOT / "single")
+
+    def test_independent_reference_explicit_arguments_take_priority(self) -> None:
+        from covariance_based.run_independent_reference import experiment_system, parse_args
+        args = parse_args(["--mc-times", "3", "--pilot-len", "12", "--out-dir", "/tmp/reference_override"])
+        cfg = experiment_system(args)
+        self.assertEqual((args.mc_times, cfg.pilot_len), (3, 12))
+        self.assertEqual(args.out_dir, Path("/tmp/reference_override"))
+        self.assertEqual((cfg.activity_mode, cfg.activity_prob), ("independent", 0.1))
+
+    def test_snr_sweep_requires_snr_dependent_noise(self) -> None:
+        runner = self.runner
+        with patch.object(runner, "USE_PAPER_EVENT_TEST_SETTINGS", True), patch.object(runner, "PILOT_LEN_OVERRIDE", None):
+            args = runner.parse_args(["--sweep", "SNR"])
+            with self.assertRaisesRegex(ValueError, "fixed thermal noise"):
+                runner.experiment_points(runner.experiment_system(args), args)
+            args = runner.parse_args(["--sweep", "SNR", "--noise-mode", "snr"])
+            points = runner.experiment_points(runner.experiment_system(args), args)
+        self.assertEqual(len(points), 6)
+        self.assertTrue(all(cfg.noise_mode == "snr" for _, _, cfg in points))
+
+
+@unittest.skipUnless(find_spec("torch"), "Activity statistics tests require torch.")
+class ActivityCountStatsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import covariance_based.run_monte_carlo as runner
+        cls.runner = runner
+
+    def test_counts_histogram_quantiles_and_empty_trials(self) -> None:
+        stats = self.runner.summarize_activity_counts([0, 1, 2, 2, 5], 5)
+        self.assertEqual((stats["min_active"], stats["max_active"], stats["mean_active"]), (0, 5, 2.0))
+        self.assertEqual(stats["histogram_by_active_count"], [1, 1, 2, 0, 0, 1])
+        self.assertEqual((stats["zero_active_trials"], stats["nonempty_trials"], stats["min_active_nonempty"]), (1, 4, 1))
+        self.assertEqual(stats["mean_active_nonempty"], 2.5)
+        self.assertAlmostEqual(stats["p95_active"], 4.4)
+        empty = self.runner.summarize_activity_counts([0, 0], 3)
+        self.assertIsNone(empty["min_active_nonempty"])
+        self.assertIsNone(empty["mean_active_nonempty"])
+        for invalid in ([], [-1], [6], [0.5], [float("nan")], [[1]]):
+            with self.assertRaises(ValueError):
+                self.runner.summarize_activity_counts(invalid, 5)
+
+    def test_stats_are_grouped_by_experiment_point(self) -> None:
+        import json
+        runner = self.runner
+        metadata = {"method": "covariance", "sweep": "N", "sweep_value": "5", "N": 5, "M": 3,
+                    "L": 2, "snr_db": 20.0, "activity_mode": "event", "noise_mode": "snr"}
+        rows = [{**metadata, "active": value} for value in (0, 2, 3)]
+        rows.append({**metadata, "sweep_value": "10", "N": 10, "active": 4})
+        with TemporaryDirectory() as directory:
+            out = Path(directory)
+            runner.write_csv(out / "trial_results.csv", runner.POINT_FIELDS + ["active"], rows)
+            records = runner.save_activity_count_stats(out)
+            self.assertEqual(len(records), 2)
+            self.assertEqual((records[0]["mc_times"], records[0]["max_active"]), (3, 3))
+            self.assertEqual((records[1]["mc_times"], records[1]["mean_active"]), (1, 4.0))
+            self.assertEqual(json.loads((out / "activity_count_stats.json").read_text()), records)
+
+
 @unittest.skipUnless(find_spec("matplotlib") and find_spec("torch"), "Plot tests require matplotlib and torch.")
 class CovariancePlotTests(unittest.TestCase):
     @classmethod

@@ -118,3 +118,155 @@ covariance_based/README.md、CALL_CHAIN.md # 记录临时覆盖及恢复方法�
 15、L=8测试后恢复协方差方法的默认导频长度：
 covariance_based/run_monte_carlo.py # 将 PILOT_LEN_OVERRIDE 恢复为None，重新继承train.py的LP=10；其余配置及已有实验结果保持不变
 covariance_based/README.md、CALL_CHAIN.md # 同步当前默认配置并追加恢复记录
+
+261014:
+16、新增协方差方法的论文参数事件驱动临时测试：
+covariance_based/run_monte_carlo.py # 启用 USE_PAPER_EVENT_TEST_SETTINGS，临时使用N=100、L=8、半径250米、thermal噪声和event活跃；固定噪声为-169 dBm/Hz乘10 MHz，即-99 dBm
+covariance_based/run_monte_carlo.py # 保留事件到达参数、120米影响尺度、导频归一化及其他未指定参数；命令行配置优先；Transformer配置不变
+covariance_based/run_monte_carlo.py # 测试输出独立保存到checkpoint/covariance_261014_paper_event；关闭测试开关即可恢复原系统参数继承和输出路径
+covariance_based/run_monte_carlo.py # thermal模式拒绝无效的SNR扫描，避免只改变snr_db却不改变噪声功率
+covariance_based/test_detector.py # 新增临时预设、恢复继承、命令行优先级及SNR扫描有效性测试
+covariance_based/README.md、CALL_CHAIN.md # 记录实验参数、固定噪声功率、输出路径和恢复方法；本次不改变导频方差，不属于完整论文复现
+验证 # 13项单元测试通过；2次小规模Monte Carlo正常输出CSV/PNG/SVG；逐次噪声方差均为约1.2589e-13 W；Transformer及已有实验结果未改动
+
+261014:
+17、新增独立活跃概率0.1的协方差参考测试：
+covariance_based/run_independent_reference.py # 新增独立入口，复用论文参数预设和原Monte Carlo流程，仅将活跃模式设为independent、概率设为0.1
+covariance_based/run_independent_reference.py # 默认保留N=100、L=8、半径250米、固定热噪声，结果保存到checkpoint/covariance_261014_paper_independent/single；不修改事件测试开关或Transformer
+covariance_based/test_detector.py # 新增参考物理参数一致性、预设开关无关性、独立输出路径和命令行优先级测试
+covariance_based/README.md、CALL_CHAIN.md # 记录调用链、运行命令、输出路径及负载差异；不将本次测试表述为隔离相关性的对照或完整论文复现
+验证 # 15项单元测试通过；本机完成1000次参考实验，PM@0.5=0.178872、PF@0.5=0.006429、平均活跃比例0.10091，全部收敛；CSV统计及噪声方差验证通过，事件结果哈希不变，PNG视觉检查通过
+
+261014:
+18、将独立参考入口升级为HT论文图4的协方差复现：
+covariance_based/run_independent_reference.py # 独立NumPy生成器使用论文的单位方差CN(0,1)导频、小尺度信道、固定热噪声、独立Bernoulli(0.1)活跃及功率控制，不修改Transformer和事件数据
+covariance_based/run_independent_reference.py # 默认N=100、半径250米、pmax=23 dBm、(L,M)=(7,32)/(8,32)/(8,64)，每组5000次；结果独立保存到checkpoint/covariance_261014_paper_reproduction
+covariance_based/run_independent_reference.py # 复用已知增益且活跃变量限于[0,1]的协方差MLE；默认500轮/1e-6容差，前3次通过逐坐标直接求逆独立交叉检查，未向求解器提供标签或活跃先验
+covariance_based/run_independent_reference.py # 新增密集门限、真实0/1边界统计、合并三曲线PNG/SVG、每组逐次CSV及估计/标签NPZ；记录论文未给出的初始化、停止准则等复现选择，不伪造概率来贴合原图
+covariance_based/test_detector.py、covariance_based/test_paper_reference.py # 更新独立入口配置测试，新增导频/噪声分布、物理恒等式、配对实例、直接求逆核验、统计回读和三曲线绘图测试
+covariance_based/README.md、CALL_CHAIN.md # 同步入口、参数、调用链、运行命令、输出路径及复现限制，CALL_CHAIN保留原记录并追加16.11节
+验证 # 三组各5000次独立活跃实验完成，15000次均收敛；PM/PF@0.5为(7,32)0.261649/0.012074、(8,32)0.163625/0.005530、(8,64)0.072669/0.002429；计数、门限、噪声及配对数据核对通过；9次直接求逆检查最大分数差5.22e-15；已有结果及Transformer/事件代码哈希不变，曲线尚未与原图重合
+
+261014:
+19、区分论文复现中的独立活跃与固定活跃数：
+covariance_based/run_independent_reference.py # 新增条件统计函数，从5000次独立样本中选取真实K=10的669次，输出独立诊断CSV/PNG/SVG/配置；仅用于评价，不向检测器提供真实K，不替换主结果
+covariance_based/run_independent_reference.py # 新增--active-count K，均匀采样固定K子集，明确记录fixed_count和边缘概率K/N；默认仍为独立Bernoulli，不将固定K表述为独立采样
+covariance_based/run_independent_reference.py # 固定K=10实验默认保存至checkpoint/covariance_261014_paper_fixedK10，物理随机量与独立实验配对；不修改原协方差检测器或Transformer/事件参数
+covariance_based/test_paper_reference.py # 新增条件统计、固定K边界/均匀性和物理配对检查；保证统计选样不影响检测器输入
+covariance_based/README.md、CALL_CHAIN.md # 记录联合活跃分布的复现歧义、子集样本数、显式固定K选项和独立输出路径；子集图更接近原图属于线索，不作为作者设置已确认的结论
+验证 # 24项测试、语法编译及diff检查通过；固定K三组各5000次完成并全部收敛，PM/PF@0.5为(7,32)0.243220/0.007791、(8,32)0.122220/0.002109、(8,64)0.031120/0.000616；PF<=0.01时最小PM为0.197140/0.028160/0.001820；CSV/NPZ核对通过，共有669个K=10实例与独立实验估计完全相同；固定K主要曲线更接近论文，但端点尚有差异，未宣称作者设置已确认或精确复现原图
+
+261014:
+20、清理已替代的旧独立活跃参考结果：
+checkpoint/covariance_261014_paper_independent/ # 按用户要求删除旧1000次测试的CSV、JSON及PNG/SVG；旧测试使用N=100、L=8、M=32、独立p=0.1及CN(0,1/L)导频，不属于完整论文复现
+covariance_based/README.md、CALL_CHAIN.md # 同步旧目录已删除状态，CALL_CHAIN追加16.13节并保留历史文字；当前参考入口不依赖旧结果，算法、参数和源代码不变
+checkpoint/covariance_261014_paper_reproduction/、checkpoint/covariance_261014_paper_fixedK10/、checkpoint/covariance_261014_paper_event/ # 保留当前独立、固定K及事件实验结果
+验证 # 旧目录已不存在，三个保留目录的summary.csv哈希删除前后一致；24项单元测试及git diff --check通过，删除不影响当前运行入口
+
+261014:
+21、协方差Monte Carlo恢复与Transformer一致的事件场景：
+covariance_based/run_monte_carlo.py # 关闭USE_PAPER_EVENT_TEST_SETTINGS，保留PILOT_LEN_OVERRIDE=None，恢复完整继承train.py的N=200、M=32、L=10、500米半径、event及measured-SNR 20 dB配置
+covariance_based/run_monte_carlo.py # 默认MC_TIMES改为5000；输出改为checkpoint/covariance_261014_transformer_event，避免覆盖旧结果；求解器100轮/1e-4容差及known_generated噪声方差假设保持不变
+covariance_based/test_detector.py # 新增默认场景与train.py全字段一致、MC次数及共享生成器实测接收功率噪声检查
+covariance_based/README.md、CALL_CHAIN.md # 更新默认设置、运行命令、输出路径和接收端信息假设；CALL_CHAIN保留历史内容并追加16.14节
+保留 # run_independent_reference.py、原检测器、Transformer/共享数据生成器及既有论文复现结果不修改
+验证 # 26项测试、语法编译和diff检查通过；正式5000次完成并全部收敛，PM@0.5=0.470537、PF@0.5=0.026875、平均活跃比例0.084461、平均24.061轮；逐次计数、门限曲线、完整配置及前30个物理样本重放一致，PNG视觉检查通过，受保护代码及已有独立活跃和固定K论文复现结果哈希不变
+
+261014:
+22、新增GI-HT、HT和协方差方法的共享样本PM-PF对比：
+network/run_pm_pf_comparison.py # 加载loss-vs-epoch的第100个epoch完整last.pt，校验场景与非几何网络设置一致；GI-HT启用三几何分支，HT全部关闭且不传入G，不训练或改变loss
+network/run_pm_pf_comparison.py # CPU逐次生成5000个共享事件观测；两网络批量float32推理，协方差同观测重新求解，保留已知噪声与原求解器设置
+network/run_pm_pf_comparison.py # 推理batch默认继承训练权重的128；现有TokenBatchNorm在eval仍用当前batch统计，因此两模型采用相同分组，尾批8个保留并记录；不改网络归一化
+network/run_pm_pf_comparison.py # 1001门限统一扫描，输出三曲线双对数PNG/SVG/PDF、CSV、共享标签/分数NPZ、权重和观测哈希；保存到checkpoint/pm_pf_comparison_261014，原结果不覆盖
+network/test_pm_pf_comparison.py # 新增门限计数、0/1端点、场景和epoch一致性、损坏权重提示、HT不接收G、推理batch不改变样本和三曲线绘图测试
+covariance_based/README.md、CALL_CHAIN.md # 记录入口、运行命令、统一测试样本和已知噪声假设；CALL_CHAIN追加16.15节，保留历史文字
+权重 # 项目内loss_vs_epoch两份last.pt缺少ZIP central directory；All experiments results/results_260720下完整备份可严格加载，使用命令行路径只读备份，不修改原文件
+验证 # 34项单元测试、语法编译和diff检查通过；16次真实权重小规模测试及正式5000次完成，协方差全部收敛；GI-HT/HT/Covariance的PM/PF@0.5为0.053445/0.095319、0.072116/0.170757、0.470537/0.026875
+结果 # PF<=0.05网格点的最低PM分别为0.132523、0.333692、0.330922，对应实际PF为0.049932、0.049680、0.049983，不通过插值修改概率；不同算法不以共同0.5阈值代替同虚警率比较
+复核 # 三方法共享84461个活跃及915539个不活跃实例，NPZ与CSV统计一致，门限曲线单调及端点正确；协方差与旧5000次逐次结果和共有101个门限完全一致，PNG视觉检查通过；模型、生成器、检测器、论文复现入口及旧结果哈希不变
+
+261014:
+23、降低单事件触发人数和事件到达参数并单独测试协方差：
+network/train.py、network/data.py、network/config.py # 同步默认EVENT_TRIGGER_PROB=0.6、EVENT_LAMBDA=0.5；保留响应尺度120米、最多3事件、背景0.005及其他场景参数，不更改生成公式或固定K
+network/train.py及四个训练run入口 # 默认训练/绘图目录改为261014_low_load_covrows标记，保留原路径下历史实验；本机不训练Transformer
+covariance_based/run_monte_carlo.py # 输出改为checkpoint/covariance_261014_low_load_event；新增activity_count_stats.json，从逐次真实K记录范围、均值、分位数、空场景和直方图，不改变检测器输入、统计口径或求解器
+covariance_based/test_detector.py # 新增三处事件默认值一致性、事件峰值/空间尺度与背景公式、几何矩阵不变、K统计与多实验点汇总测试
+covariance_based/README.md、CALL_CHAIN.md # 同步低负载配置、运行命令和输出；CALL_CHAIN追加16.16节并保留历史文字；旧模型权重仍属于旧场景，后续需重新训练才能作低负载同场景对比
+保留 # run_independent_reference.py、网络结构、loss、检测器、原权重和所有旧实验结果不修改；本次只跑协方差5000次并单独绘图
+验证 # 38项单元测试、语法编译及diff检查通过，12次小规模运行和四个run继承检查通过；正式协方差5000次全部收敛，平均12.3002轮；PM/PF@0.5为0.267636/0.003791，活跃32533、非活跃967467、漏检8707、虚警3668
+活跃人数 # K实际范围0至47、平均6.5066、中位数2、90/95/99分位18/22/33；空场景1069次，非空3931次的K为1至47、平均8.276011；该范围不是硬上限，模型仍允许0至N
+复核 # 新旧系统配置仅两个事件参数不同；CSV与汇总、直方图/分位数、门限曲线及前30个物理样本重放一致；PNG视觉检查通过；网络、loss、检测器、论文复现入口和旧结果哈希不变；未训练Transformer
+曲线 # 阈值0时PM=0.083208、PF=0.067051，当前规则下仍无PM=PF交点；不强制调整错误率以匹配图形
+
+261014:
+24、恢复事件到达参数λ=1并再次测试协方差：
+network/train.py、network/data.py、network/config.py # EVENT_LAMBDA由0.5恢复1.0，EVENT_TRIGGER_PROB仍为0.6；其他场景参数及生成公式不变
+covariance_based/run_monte_carlo.py # 默认输出改为checkpoint/covariance_261014_low_load_lambda1_event；本次5000次、1001门限，单独画协方差图并统计真实活跃人数
+network/train.py及四个训练run # 默认输出目录加入low_load_lambda1标记，保留λ=0.5及旧场景结果；不执行Transformer训练
+covariance_based/test_detector.py、README.md、CALL_CHAIN.md # 同步新默认值、目录及调用说明；CALL_CHAIN仅追加16.17，已有修改日志内容保留
+保留 # 网络、loss、检测器、run_independent_reference.py、全部已有权重和结果不修改
+验证 # 38项测试、语法编译及四个run继承检查通过；用户中断时任务已完成5000次且全部收敛，平均19.878轮；K范围0至53、平均11.753、PM/PF@0.5为0.366426/0.011948；用户随后要求改为1000次，原结果保留，当前测试见记录25
+
+261014:
+25、单独协方差测试默认改为1000次并重跑：
+covariance_based/run_monte_carlo.py # MC_TIMES=1000；场景仍为λ=1、峰值触发0.6，其他场景与算法不变；新输出checkpoint/covariance_261014_low_load_lambda1_mc1000_event，不覆盖已完成5000次结果
+covariance_based/test_detector.py # 更新默认MC次数和输出根检查
+network/run_pm_pf_comparison.py、network/test_pm_pf_comparison.py # 联合正式对比独立保留MC_TIMES=5000，避免跟随协方差小规模测试次数改变；新增两入口默认次数独立测试
+covariance_based/README.md、CALL_CHAIN.md # 同步当前1000次测试命令和输出，CALL_CHAIN追加16.18；原5000次已完成记录保留，不把其结果冒充1000次
+保留 # EVENT_LAMBDA=1、EVENT_TRIGGER_PROB=0.6、网络、loss、检测器、论文复现入口及已有结果不修改；不训练Transformer
+验证 # 39项单元测试、语法编译及diff检查通过；实际重跑1000次，全部收敛，平均20.769轮；PM/PF@0.5为0.383208/0.013328，活跃12351、非活跃187649、漏检4733、虚警2501
+活跃人数 # 本次K范围0至52、平均12.351、中位数11，90/95/99分位29/33/约42.01；132次空场景，868次非空场景平均K为14.229263；范围不是硬限制
+复核 # 计数、K统计/直方图、曲线单调性和端点、前30个物理样本重放通过；所有1000次非耗时字段与旧5000次的前1000次一致，PNG视觉检查通过；已有5000次及其他受保护结果哈希未变；未训练Transformer
+最终核对 # 原λ=1的5000次目录在完成上述配对及哈希核验后已不在文件系统中；本次没有执行删除操作，不自动恢复该旧目录；新1000次完整结果仍存在，旧数值作为历史验证记录保留
+
+261014:
+26、缩小事件响应尺度σ为80米并测试协方差：
+network/train.py、network/data.py、network/config.py # EVENT_SIGMA_M由120改为80；λ=1、峰值触发0.6、背景0.005、最多3事件及N/L/M/SNR等其余设置不变，不新增固定K或硬覆盖约束
+covariance_based/run_monte_carlo.py # 1000次测试默认输出改为checkpoint/covariance_261014_sigma80_lambda1_mc1000_event；扫描1001门限并单独绘图，记录真实K统计，保留σ=120结果
+network/train.py及四个训练run # 默认目录使用sigma80_lambda1标记，便于服务器后续训练且不覆盖旧实验；本机未训练Transformer
+covariance_based/test_detector.py # 更新参数/目录断言，按当前σ验证空间响应与背景；新增默认G距离尺度随σ调整的测试
+covariance_based/README.md、CALL_CHAIN.md # 同步新参数、目录及运行方式，CALL_CHAIN追加16.19；解释σ不是硬覆盖半径，旧权重的保存场景不自动改变
+保留 # 网络、loss、事件/信号生成公式、检测器、论文复现入口和旧结果不修改
+验证 # 40项单元测试、语法编译及diff检查通过，四个训练run继承检查通过；本次1000次全部收敛，平均12.879轮；PM/PF@0.5为0.152555/0.001519，活跃6496、非活跃193504、漏检991、虚警294
+活跃人数 # K实际范围0至28、平均6.496、中位数6，90/95/99分位15/18/约22.01；136次空场景，864次非空场景平均K为7.518519；范围不是硬限制
+配对复核 # 新旧配置仅σ不同；全部1000对原始观测重放中，导频、位置、信道、事件中心及随机数推进一致，σ80活跃标签为σ120子集，G尺度同步缩小；K、噪声、计数、直方图和曲线检查通过
+事件数量 # 两组均为0/1/2/3事件对应341/372/198/89次，总1035、平均1.035；响应范围缩小没有改变事件到达次数
+曲线 # PM=PF交点线性插值约0.031627、门限约0.002449，仅为经验曲线插值；PNG视觉检查通过；网络、loss、检测器、论文复现入口及旧结果哈希未变，未训练Transformer
+
+261014:
+27、调整事件响应尺度σ为100米并测试协方差：
+network/train.py、network/data.py、network/config.py # σ由80改为100；λ=1、触发0.6及其他场景参数不变，高斯响应和G尺度保持一致，不增加硬人数限制
+covariance_based/run_monte_carlo.py # 新输出checkpoint/covariance_261014_sigma100_lambda1_mc1000_event；仍1000次，扫描1001门限，单独绘制协方差PM-PF
+network/train.py及四个训练run # 默认目录使用sigma100_lambda1标记，避免覆盖已有实验；本机不训练Transformer
+covariance_based/test_detector.py # 更新默认参数/目录断言，G尺度测试按当前σ构造距离
+covariance_based/README.md、CALL_CHAIN.md # 同步当前参数/路径/命令，CALL_CHAIN仅追加16.20，保留已有历史文字
+保留 # 网络、loss、事件/信号生成公式、检测器和run_independent_reference.py不修改
+验证 # 40项单元测试、语法编译、diff及四个run继承检查通过；实际1000次全部收敛，平均16.942轮；PM/PF@0.5=0.270980/0.005734，活跃9211、非活跃190789、漏检2496、虚警1094
+活跃人数 # K实测0至39、均值9.211、中位数8，90/95/99分位21/25/31；132次空场景保留，868次非空平均K为10.611751，范围不是硬限制
+配对复核 # 1000对σ80/100物理样本导频、位置、信道、事件中心及随机数推进一致，σ80标签为σ100子集；K、噪声、计数、直方图、曲线及旧结果哈希检查通过
+事件数量 # 0/1/2/3事件对应341/372/198/89次，均值1.035，未更改事件到达样本
+曲线 # 当前[0,1]门限无PM=PF交点；PNG已检查；σ100相较σ80负载和门限0.5两项错误率增大；未训练Transformer，未删除旧结果
+
+261014:
+28、降低峰值事件触发概率为0.5并测试协方差：
+network/train.py、network/data.py、network/config.py # EVENT_TRIGGER_PROB由0.6改为0.5；σ=100、λ=1及其他场景参数不变；G仅依赖位置和σ，核函数不变
+covariance_based/run_monte_carlo.py # 新输出checkpoint/covariance_261014_sigma100_trigger0p5_lambda1_mc1000_event；仍1000次，扫描1001门限，单独绘制协方差PM-PF
+network/train.py及四个训练run # 默认目录增加trigger0p5标记，不覆盖0.6结果；本机不训练Transformer
+covariance_based/test_detector.py # 同步默认概率/目录断言及事件距离响应的预期概率
+covariance_based/README.md、CALL_CHAIN.md # 同步当前参数/路径/命令，CALL_CHAIN仅追加16.21，历史文字保留
+保留 # 数据生成公式、网络、loss、检测器、独立论文复现入口和旧实验不修改
+验证 # 40项单元测试、语法编译、diff及四个run继承检查通过；实际1000次全部收敛，平均15.053轮；PM/PF@0.5=0.221785/0.003415，活跃7886、非活跃192114、漏检1749、虚警656
+活跃人数 # K实测0至33、均值7.886、中位数7，90/95/99分位18/21/约26.01；保留134次空场景，866次非空平均K为9.106236；相较触发0.6负载和两项错误率降低
+配对复核 # 1000对0.5/0.6物理样本导频、位置、信道、事件中心、G及随机数推进一致，0.5活跃标签为0.6子集；0.6重放复核总活跃9211/最大39；新K、噪声、计数、直方图、曲线及受保护代码哈希检查通过
+事件数量 # 0/1/2/3事件对应341/372/198/89次，均值1.035，未改变事件到达样本
+曲线 # PM=PF经验曲线线性插值约0.054999、门限约0.000575；PNG已检查；未训练Transformer
+实际路径 # 运行后结果目录被外部调整为checkpoint/covariance_261014_eventtriggerprob0.5_sigma100_lambda1/single/，代码未来默认输出不变；最终核对时旧0.6结果目录已不存在，本次未删除或恢复该目录，保留已验证历史数值
+
+261014:
+29、当前事件场景的Transformer服务器训练前检查：
+requirements.txt # 删除两行无效安装项Python 3.12.2及2.11.0+cu128，补充matplotlib；保留torch/numpy/tqdm约束，不安装或更换环境
+README.md # 更正train.py配置来源与CLI说明，补充当前σ100/触发0.5/λ1场景、四个run、服务器短测与输出回传方式
+CALL_CHAIN.md # 仅追加16.22，记录四入口真实小规模测试及服务器启动命令
+验证 # 四个run各跑addcorr/noaddcorr，均为完整网络、CPU、1 epoch/2 step/batch4/eval2；前向、反向、有限loss、skip=0、权重保存/严格重载、CSV/PNG和场景/开关检查通过；测试结果只在临时目录
+对照检查 # noaddcorr三个几何模块全部关闭，真实G/None/随机G输出完全相同，两个方法均使用covariance_rows和当前事件分布
+保留 # 场景、数据/噪声生成公式、网络、loss、训练超参数及正式实验结果不修改；未正式训练，未验证服务器CUDA/BF16/显存

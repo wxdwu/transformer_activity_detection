@@ -1,0 +1,4 @@
+method,sweep,sweep_value,N,M,L,snr_db,activity_mode,noise_mode,source_mc_times,selected_trials,true_active_count,threshold,PM,PF,PM_at_zero,PF_below_one
+covariance_mle_cd,paper_L_M,L7_M32,100,32,7,,independent,thermal,5000,669,10,0.5,0.2436472346786248,0.008088357415711676,0.030792227204783258,0.0013120744062448098
+covariance_mle_cd,paper_L_M,L8_M32,100,32,8,,independent,thermal,5000,669,10,0.5,0.11748878923766816,0.001993024414549078,0.0038863976083707025,0.00014947683109118088
+covariance_mle_cd,paper_L_M,L8_M64,100,64,8,,independent,thermal,5000,669,10,0.5,0.030343796711509715,0.0005314731772130875,0.0007473841554559044,4.982561036372695e-05

@@ -1,0 +1,104 @@
+{
+  "mc_times": 5000,
+  "max_sweeps": 500,
+  "tolerance": 1e-06,
+  "threshold": 0.5,
+  "num_thresholds": 1001,
+  "seed": 42,
+  "cases": [
+    [
+      7,
+      32
+    ],
+    [
+      8,
+      32
+    ],
+    [
+      8,
+      64
+    ]
+  ],
+  "pilot_len": null,
+  "num_antennas": null,
+  "num_devices": 100,
+  "cell_radius_m": 250.0,
+  "pmax_dbm": 23.0,
+  "noise_power_dbm_hz": -169.0,
+  "bandwidth_hz": 10000000.0,
+  "activity_prob": 0.1,
+  "activity_mode": "independent",
+  "noise_mode": "thermal",
+  "cyclic_order": false,
+  "audit_trials": 3,
+  "out_dir": "/Users/aochen/Research/Correlated Activation/transformer_activity_detection/checkpoint/covariance_261014_paper_reproduction",
+  "log_every": 250,
+  "no_plot": false,
+  "paper_url": "https://arxiv.org/html/2112.10086v1#S5",
+  "system_config": {
+    "num_devices": 100,
+    "num_antennas": 32,
+    "pilot_len": 8,
+    "cell_radius_m": 250.0,
+    "pmax_dbm": 23.0,
+    "noise_power_dbm_hz": -169.0,
+    "bandwidth_hz": 10000000.0,
+    "activity_mode": "independent",
+    "activity_prob": 0.1,
+    "noise_mode": "thermal"
+  },
+  "points": [
+    {
+      "num_devices": 100,
+      "num_antennas": 32,
+      "pilot_len": 7,
+      "cell_radius_m": 250.0,
+      "pmax_dbm": 23.0,
+      "noise_power_dbm_hz": -169.0,
+      "bandwidth_hz": 10000000.0,
+      "activity_mode": "independent",
+      "activity_prob": 0.1,
+      "noise_mode": "thermal"
+    },
+    {
+      "num_devices": 100,
+      "num_antennas": 32,
+      "pilot_len": 8,
+      "cell_radius_m": 250.0,
+      "pmax_dbm": 23.0,
+      "noise_power_dbm_hz": -169.0,
+      "bandwidth_hz": 10000000.0,
+      "activity_mode": "independent",
+      "activity_prob": 0.1,
+      "noise_mode": "thermal"
+    },
+    {
+      "num_devices": 100,
+      "num_antennas": 64,
+      "pilot_len": 8,
+      "cell_radius_m": 250.0,
+      "pmax_dbm": 23.0,
+      "noise_power_dbm_hz": -169.0,
+      "bandwidth_hz": 10000000.0,
+      "activity_mode": "independent",
+      "activity_prob": 0.1,
+      "noise_mode": "thermal"
+    }
+  ],
+  "pilot_entry_distribution": "CN(0, 1)",
+  "channel_entry_distribution": "CN(0, 1)",
+  "noise_variance_w": 1.2589254117941713e-13,
+  "dtype": "complex128",
+  "activity_generation": "independent Bernoulli; active count not fixed",
+  "path_loss_db": "128.1 + 37.6 log10(distance_km)",
+  "power_control": "p_n = pmax * min_device_gain / device_gain_n",
+  "paired_cases": "same positions/labels; prefixes of common pilots, channels and noise",
+  "solver": "known-gain box-constrained covariance MLE; zero initialization",
+  "reproduction_choices_not_specified_by_paper": [
+    "RNG seed, coordinate order, zero initialization, stopping tolerance and sweep cap",
+    "dense threshold grid and pooled error-count aggregation",
+    "minimum gain over sampled devices; 1 m distance guard",
+    "paired realizations across cases; no original HT figure source code used"
+  ],
+  "audit": "same coordinate order with independent direct inversion; not a global-optimality proof"
+}
