@@ -89,10 +89,10 @@ The default is now `USE_PAPER_EVENT_TEST_SETTINGS=False` and
 `PILOT_LEN_OVERRIDE=None`, restoring all system settings from `network/train.py`:
 currently `N=200`, `M=32`, `L=10`, radius `500 m`, event-driven activity, and
 measured-SNR noise at `20 dB`. Event count is Poisson(1) capped at 3, response
-scale is `100 m`, peak trigger probability is `0.5`, and background probability
+scale is `150 m`, peak trigger probability is `0.5`, and background probability
 is `0.005`. Pilot entries remain CN(0,1/L). Global activity is not forced to 0.1.
 The event-response and physical-generation formulas are unchanged; the current
-response scale is 100 m, peak trigger is 0.5 and event arrival is 1.0. This aligns the scene
+response scale is 150 m, peak trigger is 0.5 and event arrival is 1.0. This aligns the scene
 and distribution for newly trained Transformers, not the exact historical
 GPU-generated test observations.
 
@@ -255,7 +255,7 @@ when producing a final shared-test-set comparison.
 
 ## Outputs
 
-The output root is `checkpoint/covariance_261014_sigma100_trigger0p5_lambda1_mc1000_event/`, configured by `OUTPUT_ROOT`
+The output root is `checkpoint/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event/`, configured by `OUTPUT_ROOT`
 in `run_monte_carlo.py` or `--out-dir`. While the temporary preset is enabled,
 the default root is instead `checkpoint/covariance_261014_paper_event/`,
 configured by `PAPER_EVENT_TEST_OUTPUT_ROOT`, preserving existing results.
@@ -507,7 +507,7 @@ protected code/result hashes were verified; 40 tests and compilation passed.
 The PNG was inspected. The saved [0,1] threshold curve has no PM=PF crossing
 (at threshold 0, PM=0.086744 and PF=0.075088); no equal-error value is inferred.
 
-## Current Event Experiment (261014, Sigma=100, Trigger=0.5)
+## Previous Event Experiment (261014, Sigma=100, Trigger=0.5)
 
 The peak event-trigger probability is now 0.5 in train.py, SystemConfig and
 the JSON defaults. Sigma=100 m, lambda=1, background=0.005, event cap=3,
@@ -549,3 +549,226 @@ files currently reside in
 `checkpoint/covariance_261014_eventtriggerprob0.5_sigma100_lambda1/single/`.
 The previous trigger=0.6 directory was no longer present at the final audit;
 this workflow did not delete or restore it. Historical numbers remain above.
+
+## Previous Event Experiment (261015, Sigma=100, Trigger=0.8)
+
+The peak event-trigger probability is now 0.8 in train.py, SystemConfig and
+the JSON defaults. Sigma=100 m, lambda=1, background=0.005, event cap=3,
+N=200, L=10, M=32, radius=500 m and measured SNR=20 dB are unchanged.
+This is the peak response probability to one event, not the global activity
+probability. The affinity matrix is unchanged for the same device geometry
+because its kernel depends on position and sigma. All generation, detection,
+network and loss formulas are unchanged; no Transformer training is run here.
+
+```bash
+python covariance_based/run_monte_carlo.py --num-thresholds 1001
+```
+
+The standalone test remains 1000 trials with seed 42, solver budget 100
+sweeps/tolerance 1e-4, known generated noise variance and 1001 thresholds.
+New results are saved under
+`checkpoint/covariance_261015_sigma100_trigger0p8_lambda1_mc1000_event/single/`.
+Training and the four neural experiment defaults now use
+`*_261015_sigma100_trigger0p8_lambda1_covrows/`; old trigger=0.5 results are
+not overwritten. Use newly trained trigger=0.8 weights for a matched-scene
+comparison, not the trigger=0.5 weights from the previous experiment.
+
+All 1000 solves converged (mean 20.187 sweeps). PM/PF@0.5=0.366314/0.012340;
+active/inactive totals=11916/188084 and missed/false counts=4365/2321.
+Observed K=0..49, mean 11.916, median 11, p90=27, p95=33, p99 about 41.01.
+All 132 empty trials are retained; the 868 nonempty trials have mean
+K=13.728111. These ranges are sample statistics, not hard bounds. Compared
+with trigger=0.5 (K=0..33, mean 7.886, PM/PF@0.5=0.221785/0.003415), the
+increased triggering raises observed load and both error rates in this test.
+
+All 1000 paired physical samples were replayed: pilots, user positions,
+channels, event centers, affinity matrices and RNG progression are identical;
+trigger=0.5 labels are a subset of trigger=0.8 labels. Actual K and noise
+match the corresponding saved CSVs. The event histogram remains
+[341,372,198,89] for 0..3 events, mean 1.035 events/trial. Counts, histograms,
+quantiles, curves, endpoints and four neural runner defaults were verified.
+All 40 tests and source compilation passed; protected model/loss/detector/
+reference code and old trigger=0.5 summary/trial/statistics hashes are unchanged.
+The PNG was inspected. At threshold 0, PM=0.146274 and PF=0.092390;
+the saved [0,1] threshold curve has no PM=PF crossing, so no EER is reported.
+
+## Current Event Experiment (261015, Sigma=150, Trigger=0.5)
+
+The default peak event-trigger probability is restored to 0.5 and sigma is
+increased to 150 m in train.py, SystemConfig and the JSON defaults. Lambda=1,
+background=0.005, event cap=3, N=200, L=10, M=32, radius=500 m and measured
+SNR=20 dB are unchanged. Sigma is a Gaussian response scale, not a hard
+coverage radius or activity-count cap. With CORRELATION_LENGTH_M=0, the
+geometry kernel automatically uses sqrt(2)*150 m. The covariance detector
+does not consume that affinity matrix. No generation, model, loss or solver
+formulas are changed, and no Transformer training is performed here.
+
+```bash
+python covariance_based/run_monte_carlo.py --num-thresholds 1001
+```
+
+The standalone run still uses 1000 trials, seed 42, solver budget 100 sweeps,
+tolerance 1e-4, known generated noise and 1001 thresholds. New output:
+`checkpoint/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event/single/`.
+Training and the four neural runner defaults use
+`*_261015_sigma150_trigger0p5_lambda1_covrows/`. Old experiments are not
+overwritten. The appropriate reference for isolating the sigma change is
+the sigma=100/trigger=0.5 run, not the previous sigma=100/trigger=0.8 run.
+Matched-scene neural comparisons require new sigma=150 checkpoints.
+
+All 1000 solves converged (mean 23.389 sweeps). PM/PF@0.5=0.436228/0.020538;
+active/inactive totals=14834/185166 and missed/false counts=6471/3803.
+Observed K=0..57, mean 14.834, median 13.5, p90 about 34.1, p95=40 and p99
+about 47.01 (linear quantiles). All 132 empty trials are retained; the 868
+nonempty trials have mean K=17.089862. These ranges are empirical, not hard
+bounds. At the same trigger=0.5, sigma=100 had K=0..33, mean 7.886 and
+PM/PF@0.5=0.221785/0.003415. Increasing sigma raises the observed load and
+both error rates in this test.
+
+All 1000 sigma=100/150 physical sample pairs were replayed. Configurations
+differ only in sigma; pilots, positions, channels, events and RNG progression
+match. Sigma=100 activity labels are a subset of sigma=150 labels, and the
+geometry affinity widens with sigma. K and noise match the corresponding
+CSVs. Event counts 0..3 still occur [341,372,198,89] times, mean 1.035 events
+per trial. Counts, histograms, quantiles, curves, endpoints, four runner
+defaults and source compilation were verified, and all 40 tests passed.
+Protected model/loss/detector/reference code and sigma=100/trigger=0.5
+summary/trial/statistics hashes are unchanged. The PNG was inspected.
+At threshold 0, PM=0.196238 and PF=0.109248; the saved [0,1] curve has no
+PM=PF crossing, so no EER is reported.
+
+The completed result directory was moved after execution; verified files
+currently reside in
+`checkpoint/test/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event/single/`.
+The code's future default output remains the top-level path above. This
+workflow does not move or delete existing experiments, train Transformers,
+commit changes or push them to the remote.
+
+## New Server Checkpoints: Three-Method Comparison (261015)
+
+For the user-specified sigma=100/trigger=0.5/lambda=1 scene, use both epoch-100
+last.pt files from loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows.
+Their complete physical configurations match the saved covariance experiment
+in covariance_261014_eventtriggerprob0.5_sigma100_lambda1. This evaluation
+does not use the current sigma=150 training defaults or the old 260720 weights.
+
+```bash
+python network/run_pm_pf_comparison.py --giht-ckpt checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/addcorr/last.pt --ht-ckpt checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/noaddcorr/last.pt --out-dir checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1 --mc-times 1000 --device cpu
+```
+
+The count and seed reproduce the standalone covariance experiment's 1000
+realizations. All three methods receive the same observations; the covariance
+curve is recalculated on this shared set, not spliced from unrelated data.
+Both models use their training batch size 128, retaining the final group of
+104 because TokenBatchNorm uses current-batch statistics. HT receives no G;
+all its geometry modules are disabled. Inference is float32 without autocast.
+Thresholds, covariance settings and known-noise assumptions are unchanged.
+
+The new output directory contains pm_pf_comparison.png/svg/pdf, pm_pf_curves.csv,
+summary.csv, activity_scores.npz, covariance_trials.csv and run_config.json.
+No training is run and no previous plots, checkpoints or scene defaults are
+overwritten. For reproducible publication comparisons, retain these files and
+their checkpoint/data hashes together.
+
+The completed run used all 1000 shared realizations (7886 active and 192114
+inactive device instances; K=0..33, mean 7.886). At threshold 0.5:
+
+| Method | PM | PF | Missed | False Alarms |
+| --- | --- | --- | --- | --- |
+| GI-HT | 0.017880 | 0.034865 | 141 | 6698 |
+| HT | 0.024854 | 0.046894 | 196 | 9009 |
+| Covariance | 0.221785 | 0.003415 | 1749 | 656 |
+
+All 1001 covariance curve points exactly match the specified standalone CSV,
+as do all 1000 per-trial noise/count/convergence diagnostics (mean 15.053
+sweeps, all converged). Raw scores, labels, curve counts and endpoints were
+checked. An independent 1000-sample replay matched the saved observation
+digest; checkpoint hashes were unchanged, and the combined PNG was inspected.
+No model, loss or current training scene was changed.
+
+Interpolating at all empirical score breakpoints gives equal-error estimates
+GI-HT=0.027771, HT=0.037281, Covariance=0.054907. These are interpolated
+estimates, not exactly attainable deterministic empirical operating points.
+The covariance estimate differs slightly from the old 1001-grid estimate
+0.054999 because of threshold resolution; the actual saved curve is unchanged.
+
+## Box-Constrained NNLS Baseline (261015)
+
+`covariance_based/nnls.py` adds a non-neural baseline for known scaled pilots:
+
+```text
+minimize ||C_hat - B diag(a) B^H - noise_variance I||_F^2
+subject to 0 <= a_i <= 1
+```
+
+It is labeled `Box-NNLS` to distinguish it from classical NNLS with no upper
+bound. The box matches the existing MLE baseline's available large-scale-gain
+information and continuous activity relaxation. The known-gain NNLS variant
+is described in Section III-C1 of
+[Fengler et al., IEEE TIT 2021](https://arxiv.org/html/1910.11266v2).
+Only B, sample covariance and noise variance enter the solver: no true labels,
+active count, activity probability, geometry or event centers are used.
+
+The complete complex covariance is realified by stacking real and imaginary
+parts. All physical powers share one numerical scale; neither B nor C is
+normalized independently, and C_hat-noise*I is not projected onto the PSD cone.
+SciPy's `lsq_linear(method="bvls")` solves the bounded convex least-squares
+problem, rather than fitting unconstrained LS and clipping afterward.
+Tiny numerical boundary drift is snapped only after the bounded solve;
+actual bound violations raise an error. Defaults are max_iter=1000 and
+tolerance=1e-10. Iteration and tolerance meanings differ from MLE CD sweeps and
+coordinate-step tolerance, so NNLS settings and diagnostics are separate.
+
+The joint comparison adds an opt-in flag, preserving its original three-method
+default and independent 5000-trial default count. For the current comparison
+figure, use the epoch-100 sigma=100/trigger=0.5/lambda=1 checkpoints, not the
+current sigma=150 training defaults:
+
+```bash
+python network/run_pm_pf_comparison.py --giht-ckpt checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/addcorr/last.pt --ht-ckpt checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/noaddcorr/last.pt --out-dir checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls --mc-times 1000 --include-nnls --device cpu
+```
+
+The output adds a fourth PM-PF curve, nnls_scores in activity_scores.npz,
+nnls_trials.csv and NNLS solver/version/bounds metadata in run_config.json.
+The trial CSV reports iterations, convergence, optimality, projected-gradient
+norm, status, scaled
+residual squared and its physical power scale. summary.csv uses mean_iterations
+for NNLS and retains mean_sweeps for MLE. Unconverged trials are retained and
+reported, not discarded. All methods use the same strict score>threshold rule.
+The old three-method directory and its scores are not overwritten.
+
+SciPy is added as a dependency (>=1.11,<1.16). This Mac's actual NumPy runtime
+is 1.26.4 although its distribution metadata says 2.4.6 and both core directory
+layouts remain present. After compatibility checks, SciPy 1.12.0 is used here;
+the existing NumPy/PyTorch installations are not replaced or repaired. Clean
+server environments should install the project's compatible dependencies.
+
+Convergence additionally requires the box projected-gradient infinity norm
+to meet the requested tolerance. A relative-cost stopping status alone is not
+accepted. During validation, tolerance=1e-8 stopped one sample with optimality
+about 1.6e-5; the default was tightened to 1e-10 and the complete evaluation
+rerun. This precision check uses only the objective and KKT conditions, not
+activity labels or detection performance.
+
+The final 1000-trial run completed in about 83 seconds. All NNLS solves met
+the convergence certificate (mean 34.376 iterations, maximum 99); the largest
+saved projected-gradient norm was 2.31e-14. Independent reconstruction of all
+1000 covariance objectives and KKT checks passed. The original three methods'
+scores, labels, curves and MLE trial diagnostics are exactly unchanged.
+All four methods share K=0..33, mean 7.886, and the same observation digest.
+At threshold 0.5, Box-NNLS has PM=0.311438 and PF=0.008807.
+
+Equal-error estimates from linear interpolation at all raw-score breakpoints:
+
+| Method | Interpolated PM=PF | 10 log10(PM) (dB) |
+| --- | --- | --- |
+| GI-HT | 0.027771 | -15.5641 |
+| HT | 0.037281 | -14.2851 |
+| Covariance (MLE) | 0.054907 | -12.6037 |
+| Box-NNLS | 0.093076 | -10.3116 |
+
+These estimates need not be exactly attainable by a single deterministic
+threshold on finite data. Box-NNLS does not outperform MLE in this scene.
+The four-method PNG/SVG/PDF files are in
+`checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls/`;
+the PNG was visually checked. All 54 unit tests and source compilation passed.

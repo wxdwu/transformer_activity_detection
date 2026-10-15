@@ -21,7 +21,7 @@ class SystemConfig:
     activity_mode: str = "event"
     event_lambda: float = 1.0
     event_max_count: int = 3
-    event_sigma_m: float = 100.0
+    event_sigma_m: float = 150.0
     event_trigger_prob: float = 0.5
     background_activity_prob: float = 0.005
     correlation_length_m: float = 0.0

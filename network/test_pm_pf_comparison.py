@@ -96,6 +96,49 @@ class PMPFComparisonTests(unittest.TestCase):
     def test_default_batch_size_inherits_checkpoint(self) -> None:
         self.assertIsNone(runner.parse_args([]).batch_size)
 
+    def test_nnls_is_optional_and_defaults_are_explicit(self) -> None:
+        self.assertFalse(runner.parse_args([]).include_nnls)
+        args = runner.parse_args(["--include-nnls"])
+        self.assertTrue(args.include_nnls)
+        self.assertEqual(args.nnls_max_iter, 1000)
+        self.assertEqual(args.nnls_tolerance, 1e-10)
+        self.assertEqual(runner.parse_args([]).out_dir, runner.OUTPUT_DIR)
+        self.assertNotEqual(args.out_dir, runner.OUTPUT_DIR)
+
+    def test_nnls_preserves_original_shared_data_scores_and_mle_diagnostics(self) -> None:
+        class Detector(torch.nn.Module):
+            def forward(self, x_b, x_y, geometry):
+                probabilities = torch.sigmoid(x_b.mean(dim=-1))
+                return torch.logit(probabilities), probabilities
+
+        models = {"GI-HT": Detector(), "HT": Detector()}
+        cfg = runner.SystemConfig(num_devices=6, num_antennas=4, pilot_len=3)
+        torch.set_num_threads(1)
+        args = runner.parse_args(["--mc-times", "5", "--batch-size", "2", "--log-every", "0"])
+        scores, labels, diagnostics, digest = runner.evaluate_shared_trials(models, cfg, args, torch.device("cpu"))
+        args.include_nnls = True
+        other_scores, other_labels, other_diagnostics, other_digest = runner.evaluate_shared_trials(models, cfg, args, torch.device("cpu"))
+        np.testing.assert_array_equal(labels, other_labels)
+        self.assertEqual(digest, other_digest)
+        self.assertEqual(diagnostics, [{key: val for key, val in row.items() if not key.startswith("nnls_")} for row in other_diagnostics])
+        for method in runner.METHODS:
+            np.testing.assert_array_equal(scores[method], other_scores[method])
+        nnls = other_scores[runner.NNLS_METHOD]
+        self.assertTrue(np.isfinite(nnls).all())
+        self.assertTrue(np.all((nnls >= 0) & (nnls <= 1)))
+        self.assertTrue(all(row["nnls_converged"] for row in other_diagnostics))
+
+    def test_plot_contains_four_methods_with_nnls(self) -> None:
+        methods = (*runner.METHODS, runner.NNLS_METHOD)
+        curves = {method: runner.curve_from_scores(np.array([0, 0.2, 0.8, 1]), np.array([1, 0, 1, 0]),
+                                                 np.linspace(0, 1, 11), method) for method in methods}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            runner.plot_comparison(path, curves)
+            svg = (path / "pm_pf_comparison.svg").read_text()
+            for method in methods:
+                self.assertIn(method, svg)
+
     def test_formal_comparison_count_is_separate_from_covariance_test(self) -> None:
         from covariance_based.run_monte_carlo import parse_args
 

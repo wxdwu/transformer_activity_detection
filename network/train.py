@@ -35,7 +35,7 @@ BANDWIDTH_HZ = 10e6
 ACTIVITY_MODE = "event"  # "independent" or "event"
 EVENT_LAMBDA = 1.0
 EVENT_MAX_COUNT = 3
-EVENT_SIGMA_M = 100.0
+EVENT_SIGMA_M = 150.0
 EVENT_TRIGGER_PROB = 0.5
 BACKGROUND_ACTIVITY_PROB = 0.005
 CORRELATION_LENGTH_M = 0.0
@@ -69,7 +69,7 @@ NORM_TYPE = "batch"
 # Training Parameters
 # =========================
 DEVICE = "auto"
-SAVE_DIR = ROOT / "checkpoint/addcorr_261014_sigma100_trigger0p5_lambda1_covrows"
+SAVE_DIR = ROOT / "checkpoint/addcorr_261015_sigma150_trigger0p5_lambda1_covrows"
 LOG_FILE = SAVE_DIR / "train.log"
 SEED = 42
 EPOCHS = 100

@@ -20,6 +20,7 @@ Scope of this version:
 - `network/losses.py`: weighted cross-entropy style loss (paper Eq. (4)).
 - `network/metrics.py`: `PM/PF` metrics and threshold curve.
 - `network/train.py`: training script.
+- `covariance_based/nnls.py`: traditional box-constrained covariance NNLS, solved with SciPy BVLS.
 - `network/evaluate.py`: evaluate `PM-PF` curve and export CSV.
 - `CE_methods/estimators.py`: activity-index conversion plus CAMP and LMMSE channel-estimation methods.
 - `CE_methods/compare.py`: run trained detector, call estimators, and write PM/PF/NMSE report.
@@ -46,7 +47,7 @@ Run commands from the project root, not from inside `network/`. Activate a
 Python environment with a CUDA-enabled PyTorch build for GPU training.
 The current training entry points read constants from `network/train.py`,
 not `config.json`. Current scene: N=200, L=10, M=32, radius=500 m, measured
-SNR=20 dB, event lambda=1, sigma=100 m, peak trigger=0.5, background=0.005
+SNR=20 dB, event lambda=1, sigma=150 m, peak trigger=0.5, background=0.005
 and at most 3 events. The signal token mode is `covariance_rows`.
 
 To train both addcorr and noaddcorr for 100 epochs and plot loss vs epoch:
@@ -57,7 +58,7 @@ python network/run_loss_vs_epoch.py --device cuda
 
 The runner saves separate per-mode train.log, last.pt and best_pm.pt files,
 plus loss_by_epoch.csv and loss_vs_epoch.png, under
-`checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/`.
+`checkpoint/loss_vs_epoch_261015_sigma150_trigger0p5_lambda1_covrows/`.
 Noaddcorr disables all geometry modules while keeping the same scene and
 covariance-row encoding. Plain `python network/train.py` trains only the mode
 selected by its constants; it does not parse training command-line overrides.
@@ -65,7 +66,7 @@ selected by its constants; it does not parse training command-line overrides.
 For a short server check using the real training batch size:
 
 ```bash
-python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2 --out-dir checkpoint/server_smoke_261014
+python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2 --out-dir checkpoint/server_smoke_261015
 ```
 
 Sweep runners also train both modes and inherit the same event settings:
@@ -89,6 +90,15 @@ For a new PM-PF comparison, pass these new weights explicitly to
 `network/run_pm_pf_comparison.py` with --giht-ckpt, --ht-ckpt and a new --out-dir;
 its default paths still refer to the older 260720 experiment. Old-scene weights
 must not be mixed with the new event scene.
+
+Add `--include-nnls` to the shared PM-PF comparison to evaluate GI-HT, HT,
+covariance MLE and Box-NNLS on identical observations. Both traditional methods
+use known scaled pilots and noise with activity coefficients bounded to [0,1].
+NNLS uses no neural model, activity probability, true activity count or geometry.
+The flag is opt-in; without it, the previous three-method behavior is retained.
+An unspecified output directory gains a `_with_nnls` suffix when the flag is
+enabled, keeping the old three-method output separate. Install the added SciPy
+dependency from requirements.txt before using this option.
 
 Evaluate PM/PF curve:
 

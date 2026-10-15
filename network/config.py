@@ -30,7 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "activity_mode": "event",
             "event_lambda": 1.0,
             "event_max_count": 3,
-            "event_sigma_m": 100.0,
+            "event_sigma_m": 150.0,
             "event_trigger_prob": 0.5,
             "background_activity_prob": 0.005,
             "correlation_length_m": 0.0,

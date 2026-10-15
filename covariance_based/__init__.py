@@ -8,5 +8,6 @@ if sys.platform == "darwin":
     os.environ.setdefault("MKL_THREADING_LAYER", "SEQUENTIAL")
 
 from .detector import CovarianceMLEResult, covariance_mle_activity
+from .nnls import CovarianceNNLSResult, covariance_nnls_activity
 
-__all__ = ["CovarianceMLEResult", "covariance_mle_activity"]
+__all__ = ["CovarianceMLEResult", "covariance_mle_activity", "CovarianceNNLSResult", "covariance_nnls_activity"]

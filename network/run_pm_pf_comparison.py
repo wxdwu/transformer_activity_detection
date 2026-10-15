@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from covariance_based.detector import covariance_mle_activity
+from covariance_based.nnls import NNLS_MAX_ITER, NNLS_TOLERANCE, covariance_nnls_activity
 from covariance_based.run_monte_carlo import (
     MAX_SWEEPS,
     SEED,
@@ -39,6 +40,7 @@ CHECKPOINT_ROOT = ROOT / "checkpoint" / "loss_vs_epoch_260720_covrows"
 OUTPUT_DIR = ROOT / "checkpoint" / "pm_pf_comparison_261014"
 MC_TIMES = 5000
 METHODS = ("GI-HT", "HT", "Covariance")
+NNLS_METHOD = "Box-NNLS"
 GEOMETRY_FLAGS = (
     "use_correlation_attention_bias",
     "use_correlation_feature_mixer",
@@ -48,15 +50,15 @@ CURVE_FIELDS = ["method", "threshold", "PM", "PF", "active", "inactive", "missed
 SUMMARY_FIELDS = [
     "method", "checkpoint_epoch", "mc_times", "threshold", "PM", "PF",
     "error_probability", "active", "inactive", "missed", "false_alarms",
-    "mean_activity_ratio", "converged_fraction", "mean_sweeps",
+    "mean_activity_ratio", "converged_fraction", "mean_sweeps", "mean_iterations",
 ]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate GI-HT, HT and covariance MLE on identical trials.")
+    parser = argparse.ArgumentParser(description="Evaluate GI-HT, HT and covariance baselines on identical trials.")
     parser.add_argument("--giht-ckpt", type=Path, default=CHECKPOINT_ROOT / "addcorr" / "last.pt")
     parser.add_argument("--ht-ckpt", type=Path, default=CHECKPOINT_ROOT / "noaddcorr" / "last.pt")
-    parser.add_argument("--out-dir", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--out-dir", type=Path)
     parser.add_argument("--mc-times", type=int, default=MC_TIMES)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Neural inference batch size; default inherits the checkpoint training batch size.")
@@ -64,6 +66,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--max-sweeps", type=int, default=MAX_SWEEPS)
     parser.add_argument("--tolerance", type=float, default=TOLERANCE)
+    parser.add_argument("--include-nnls", action="store_true", help="Add box-constrained covariance NNLS to the comparison.")
+    parser.add_argument("--nnls-max-iter", type=int, default=NNLS_MAX_ITER)
+    parser.add_argument("--nnls-tolerance", type=float, default=NNLS_TOLERANCE)
     parser.add_argument("--device", default="auto", help="auto, cpu, or a torch device such as cuda:0.")
     parser.add_argument("--log-every", type=int, default=250)
     args = parser.parse_args(argv)
@@ -71,6 +76,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("Counts must be positive and num-thresholds must be at least 2.")
     if args.log_every < 0 or not math.isfinite(args.tolerance) or args.tolerance <= 0:
         parser.error("log-every must be nonnegative and tolerance must be finite and positive.")
+    if args.nnls_max_iter < 1 or not math.isfinite(args.nnls_tolerance) or args.nnls_tolerance <= 0:
+        parser.error("nnls-max-iter must be positive and nnls-tolerance must be finite and positive.")
+    if args.out_dir is None:
+        args.out_dir = OUTPUT_DIR.with_name(OUTPUT_DIR.name + "_with_nnls") if args.include_nnls else OUTPUT_DIR
     return args
 
 
@@ -146,7 +155,7 @@ def plot_comparison(out_dir: Path, curves: dict[str, list[dict]]) -> None:
     import matplotlib.pyplot as plt
 
     styles = {"GI-HT": ("#0072B2", "-", "o"), "HT": ("#D55E00", "--", "s"),
-              "Covariance": ("#009E73", "-.", "^")}
+              "Covariance": ("#009E73", "-.", "^"), NNLS_METHOD: ("#CC79A7", ":", "D")}
     fig, ax = plt.subplots(figsize=(6.4, 4.8))
     for method, rows in curves.items():
         color, linestyle, marker = styles[method]
@@ -177,7 +186,8 @@ def evaluate_shared_trials(models: dict[str, torch.nn.Module], cfg: SystemConfig
     torch.manual_seed(args.seed)
     coordinate_rng = np.random.default_rng(args.seed + 1)
     generator = ActivityDataGenerator(cfg, torch.device("cpu"))
-    scores = {method: np.empty((args.mc_times, cfg.num_devices), dtype=np.float64) for method in METHODS}
+    methods = (*METHODS, NNLS_METHOD) if args.include_nnls else METHODS
+    scores = {method: np.empty((args.mc_times, cfg.num_devices), dtype=np.float64) for method in methods}
     labels = np.empty((args.mc_times, cfg.num_devices), dtype=np.uint8)
     diagnostics: list[dict] = []
     digest = hashlib.sha256()
@@ -192,12 +202,22 @@ def evaluate_shared_trials(models: dict[str, torch.nn.Module], cfg: SystemConfig
         b = batch["b"][0].numpy().astype(np.complex128)
         y = batch["y"][0].numpy().astype(np.complex128)
         noise = float(batch["noise_var"][0])
-        result = covariance_mle_activity(b, y @ y.conj().T / cfg.num_antennas, noise,
+        covariance = y @ y.conj().T / cfg.num_antennas
+        result = covariance_mle_activity(b, covariance, noise,
                                          max_sweeps=args.max_sweeps, tolerance=args.tolerance, rng=coordinate_rng)
         scores["Covariance"][index] = result.activities
         diagnostics.append({"trial": index + 1, "active": int(labels[index].sum()),
                             "receiver_noise_variance": noise, "sweeps": result.sweeps,
                             "converged": int(result.converged), "max_coordinate_step": result.max_coordinate_step})
+        if args.include_nnls:
+            nnls = covariance_nnls_activity(b, covariance, noise, max_iter=args.nnls_max_iter,
+                                            tolerance=args.nnls_tolerance)
+            scores[NNLS_METHOD][index] = nnls.activities
+            diagnostics[-1].update(nnls_iterations=nnls.iterations, nnls_converged=int(nnls.converged),
+                                   nnls_optimality=nnls.optimality, nnls_status=nnls.status,
+                                   nnls_projected_gradient_norm=nnls.projected_gradient_norm,
+                                   nnls_scaled_residual_squared=nnls.scaled_residual_squared,
+                                   nnls_power_scale=nnls.power_scale)
         pending.append({key: batch[key] for key in ("x_b", "x_y", "corr_matrix")})
         if len(pending) == args.batch_size or index + 1 == args.mc_times:
             features = {key: torch.cat([row[key] for row in pending]).to(device) for key in pending[0]}
@@ -227,24 +247,39 @@ def main(argv: list[str] | None = None) -> None:
     print(f"System: {json.dumps(asdict(cfg), sort_keys=True)}", flush=True)
     scores, labels, diagnostics, digest = evaluate_shared_trials({"GI-HT": giht, "HT": ht}, cfg, args, device)
     thresholds = np.linspace(0.0, 1.0, args.num_thresholds)
-    curves = {method: curve_from_scores(scores[method], labels, thresholds, method) for method in METHODS}
+    curves = {method: curve_from_scores(scores[method], labels, thresholds, method) for method in scores}
     summaries = []
-    for method in METHODS:
+    for method in scores:
         row = curve_from_scores(scores[method], labels, np.array([0.5]), method)[0]
-        row.update({"checkpoint_epoch": giht_meta["epoch"] if method != "Covariance" else "",
+        converged_fraction = mean_sweeps = mean_iterations = ""
+        if method == "Covariance":
+            converged_fraction = sum(r["converged"] for r in diagnostics) / args.mc_times
+            mean_sweeps = sum(r["sweeps"] for r in diagnostics) / args.mc_times
+        elif method == NNLS_METHOD:
+            converged_fraction = sum(r["nnls_converged"] for r in diagnostics) / args.mc_times
+            mean_iterations = sum(r["nnls_iterations"] for r in diagnostics) / args.mc_times
+        row.update({"checkpoint_epoch": giht_meta["epoch"] if method in ("GI-HT", "HT") else "",
                     "mc_times": args.mc_times,
                     "error_probability": (row["missed"] + row["false_alarms"]) / labels.size,
                     "mean_activity_ratio": float(labels.mean()),
-                    "converged_fraction": sum(r["converged"] for r in diagnostics) / args.mc_times if method == "Covariance" else "",
-                    "mean_sweeps": sum(r["sweeps"] for r in diagnostics) / args.mc_times if method == "Covariance" else ""})
+                    "converged_fraction": converged_fraction, "mean_sweeps": mean_sweeps,
+                    "mean_iterations": mean_iterations})
         summaries.append(row)
         print(f"{method}: PM@0.5={row['PM']:.6f}, PF@0.5={row['PF']:.6f}", flush=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.out_dir / "pm_pf_curves.csv", CURVE_FIELDS, [r for rows in curves.values() for r in rows])
     write_csv(args.out_dir / "summary.csv", SUMMARY_FIELDS, summaries)
-    write_csv(args.out_dir / "covariance_trials.csv", list(diagnostics[0]), diagnostics)
+    mle_diagnostics = [{key: value for key, value in row.items() if not key.startswith("nnls_")} for row in diagnostics]
+    write_csv(args.out_dir / "covariance_trials.csv", list(mle_diagnostics[0]), mle_diagnostics)
+    if args.include_nnls:
+        nnls_diagnostics = [{"trial": row["trial"], "active": row["active"],
+                             "receiver_noise_variance": row["receiver_noise_variance"],
+                             **{key.removeprefix("nnls_"): value for key, value in row.items() if key.startswith("nnls_")}}
+                            for row in diagnostics]
+        write_csv(args.out_dir / "nnls_trials.csv", list(nnls_diagnostics[0]), nnls_diagnostics)
     np.savez_compressed(args.out_dir / "activity_scores.npz", labels=labels,
-                        giht_scores=scores["GI-HT"], ht_scores=scores["HT"], covariance_scores=scores["Covariance"])
+                        giht_scores=scores["GI-HT"], ht_scores=scores["HT"], covariance_scores=scores["Covariance"],
+                        **({"nnls_scores": scores[NNLS_METHOD]} if args.include_nnls else {}))
     settings = {**vars(args), "system_config": asdict(cfg), "checkpoints": {"GI-HT": giht_meta, "HT": ht_meta},
                 "device_used": str(device), "inference_precision": "float32, no autocast",
                 "generator_device": "cpu", "generator_batch_size": 1, "dataset_sha256": digest,
@@ -252,6 +287,14 @@ def main(argv: list[str] | None = None) -> None:
                 "normalization_note": "TokenBatchNorm uses current-batch statistics, including the final partial batch.",
                 "noise_variance_source": "known_generated", "decision_rule": "score > threshold",
                 "threshold_scan": [0.0, 1.0], "coordinate_rng_seed": args.seed + 1}
+    if args.include_nnls:
+        from importlib.metadata import version
+        settings["nnls_solver"] = {"method": "scipy.optimize.lsq_linear", "algorithm": "bvls",
+                                   "scipy_version": version("scipy"), "bounds": [0.0, 1.0],
+                                   "max_iter": args.nnls_max_iter, "tolerance": args.nnls_tolerance,
+                                   "criterion": "squared Frobenius covariance residual, common power scaling",
+                                   "convergence_check": "SciPy success and box projected-gradient infinity norm <= tolerance",
+                                   "label": NNLS_METHOD}
     (args.out_dir / "run_config.json").write_text(json.dumps(settings, indent=2, default=str) + "\n", encoding="utf-8")
     plot_comparison(args.out_dir, curves)
     print(f"Saved comparison: {args.out_dir.resolve()}", flush=True)

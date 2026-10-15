@@ -270,3 +270,58 @@ CALL_CHAIN.md # 仅追加16.22，记录四入口真实小规模测试及服务�
 验证 # 四个run各跑addcorr/noaddcorr，均为完整网络、CPU、1 epoch/2 step/batch4/eval2；前向、反向、有限loss、skip=0、权重保存/严格重载、CSV/PNG和场景/开关检查通过；测试结果只在临时目录
 对照检查 # noaddcorr三个几何模块全部关闭，真实G/None/随机G输出完全相同，两个方法均使用covariance_rows和当前事件分布
 保留 # 场景、数据/噪声生成公式、网络、loss、训练超参数及正式实验结果不修改；未正式训练，未验证服务器CUDA/BF16/显存
+
+261015:
+30、峰值事件触发概率调整为0.8并测试协方差：
+network/train.py、network/data.py、network/config.py # EVENT_TRIGGER_PROB由0.5改为0.8，σ=100、λ=1及其他物理参数不变；G核不变，0.8不是全局活跃概率
+covariance_based/run_monte_carlo.py # 新输出checkpoint/covariance_261015_sigma100_trigger0p8_lambda1_mc1000_event；仍1000次、同种子/求解器/噪声设置，扫描1001门限并单独绘图
+network/train.py及四个训练run # 默认目录改用261015_sigma100_trigger0p8_lambda1标记，不覆盖此前0.5结果
+covariance_based/test_detector.py # 更新默认概率/路径与事件响应预期值
+README.md、covariance_based/README.md、CALL_CHAIN.md # 同步当前设置/输出，CALL_CHAIN仅追加16.23；注明三方法对比需重新训练相同0.8场景，历史文字保留
+保留 # 数据生成公式、网络、loss、检测器、独立复现入口及旧结果不改；本机不正式训练Transformer
+验证 # 40项测试、全部network/covariance_based源码编译、diff及四个run继承检查通过；1000次全部收敛、平均20.187轮；PM/PF@0.5=0.366314/0.012340，活跃11916、非活跃188084、漏检4365、虚警2321
+活跃人数 # K实测0至49、均值11.916、中位数11，90/95/99分位27/33/约41.01；保留132次空场景，868次非空平均K为13.728111，不是硬人数上限
+配对复核 # 1000对0.5/0.8样本导频、位置、信道、事件中心、G和随机数推进一致，0.5标签为0.8子集；两组K/噪声与CSV一致；旧0.5汇总/逐次CSV及统计JSON、受保护代码哈希不变
+事件数量 # 0/1/2/3事件对应341/372/198/89次，均值1.035，事件到达样本未变
+曲线 # 新图已视觉检查，[0,1]门限无PM=PF交点；相比0.5场景负载与门限0.5两项错误率增大；本次未正式训练、未自动提交或推送
+
+261015:
+31、峰值触发0.5、σ150、λ1的协方差测试：
+network/train.py、network/data.py、network/config.py # 将上次0.8恢复为0.5，σ100改为150，λ1及其他物理参数不变；G距离尺度自动使用sqrt(2)*150，生成公式不改
+covariance_based/run_monte_carlo.py # 新输出checkpoint/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event；仍1000次、相同种子/求解器/噪声/1001门限，单独绘图并保存K统计
+network/train.py及四个训练run # 默认目录使用261015_sigma150_trigger0p5_lambda1标记，不覆盖旧场景
+covariance_based/test_detector.py # 同步参数/路径/响应预期值，G尺度测试与2倍当前σ比较，避免固定120米参照在σ变大后不成立
+README.md、covariance_based/README.md、CALL_CHAIN.md # 同步新场景及命令，CALL_CHAIN仅追加16.24，保留历史；比较对象选此前σ100/触发0.5以隔离尺度影响
+保留 # 数据/噪声生成公式、网络、loss、检测器、独立复现入口及旧结果不改；不正式训练Transformer
+验证 # 40项测试、全部network/covariance_based源码编译、四个run继承及diff检查通过；1000次全部收敛、平均23.389轮；PM/PF@0.5=0.436228/0.020538，活跃14834、非活跃185166、漏检6471、虚警3803
+活跃人数 # K实测0至57、均值14.834、中位数13.5，90/95/99分位约34.1/40/47.01；保留132次空场景，非空868次平均K为17.089862，范围不是硬限制
+配对复核 # 与σ100/触发0.5的1000对样本仅σ不同，导频/位置/信道/事件中心/RNG推进一致，原标签为新标签子集，G尺度变宽；K/噪声与CSV一致，代码及旧σ100汇总/逐次CSV/统计JSON哈希不变
+事件数量 # 0/1/2/3事件对应341/372/198/89次，均值1.035；曲线无PM=PF交点，PNG已检查
+实际路径 # 运行后文件被归档至checkpoint/test/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event/single/，代码未来默认输出仍为顶层目录；本次未移动或删除旧结果，未正式训练/提交/推送
+
+261015:
+32、使用服务器新epoch100权重绘制GI-HT/HT/协方差PM-PF曲线：
+输入 # loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows内addcorr/noaddcorr的last.pt，ZIP及严格加载通过；与covariance_261014_eventtriggerprob0.5_sigma100_lambda1保存场景一致，均σ100/峰值0.5/λ1、N200/L10/M32/SNR20
+运行 # 复用network/run_pm_pf_comparison.py，显式指定新权重与输出；1000次、种子42、1001门限，三方法使用同一组原始观测；CPU float32、推理batch128且最后104，HT不输入G
+输出 # checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1，含三曲线PNG/SVG/PDF、CSV、原始分数/标签NPZ、协方差逐次诊断及配置/哈希
+CALL_CHAIN.md、covariance_based/README.md # 记录新输入、复现命令、共享测试与输出，不覆盖历史
+保留 # 当前σ150训练默认值、网络、loss、两种服务器权重及旧结果不改；不重新训练、不自动提交或推送
+完成 # 1000次共享评估，活跃7886/非活跃192114，K范围0至33/平均7.886；门限0.5时GI-HT PM/PF=0.017880/0.034865，HT=0.024854/0.046894，协方差=0.221785/0.003415
+协方差复核 # 1001点的门限/PM/PF/计数与原曲线逐项一致，1000次噪声/活跃数/轮数/最大步/收敛诊断与原CSV一致；全部收敛，平均15.053轮
+验证 # 原始NPZ分数/标签、3003点曲线、计数、端点及单调性通过，独立重放1000次核对共享数据哈希；两种权重及网络/loss/检测器哈希不变，PNG视觉和diff检查通过
+等错误率 # 基于原始分数全部断点插值：GI-HT约0.027771、HT约0.037281、协方差约0.054907；区别于粗网格插值且不是精确可达的确定门限经验相等率
+
+261015:
+33、新增Box-NNLS协方差传统方法并运行四方法比较：
+covariance_based/nnls.py、__init__.py # 新增有界NNLS API，0<=a<=1与MLE一致；完整复协方差拟合、共同物理功率缩放、SciPy BVLS，不输入标签/K/活跃先验/G；严格区分有界求解与LS后裁剪
+network/run_pm_pf_comparison.py # 新增--include-nnls可选第四方法及独立迭代/容差；保留三方法默认与5000次默认次数，默认NNLS输出加后缀防覆盖；新增诊断CSV、原始分数和算法元信息
+covariance_based/test_nnls.py、network/test_pm_pf_comparison.py # 新增解析解/独立活跃集枚举/缩放/秩亏/边界与输入测试，检查原三方法数据/分数/诊断不变及四曲线输出；53项测试通过
+requirements.txt # 增加SciPy>=1.11,<1.16；本地NumPy实际1.26.4但元数据/残留目录含2.4.6，最终安装SciPy1.12.0，不更换或修复原NumPy/PyTorch；较新SciPy导入失败已处理
+README.md、covariance_based/README.md、CALL_CHAIN.md # 补充方法、数学约束、求解器设置、依赖及命令，CALL_CHAIN仅追加16.26，历史记录不覆盖
+运行 # 与上一张三方法图相同σ100/触发0.5/λ1场景、两种epoch100权重、1000次/种子42/1001门限；四方法共享观测，输出checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls
+保留 # 网络、loss、MLE求解器、当前σ150训练默认值、已有权重/图/结果不改；不重新训练、不自动提交或推送
+精度复核 # 初始tol=1e-8有1次由相对代价提前停止；收紧默认到1e-10并新增投影梯度收敛证书及测试，完整重跑；仅依据目标/KKT调整，不使用标签调求解器
+完成 # 1000次四方法评估，Box-NNLS全部收敛、平均34.376迭代/最多99、最大保存投影梯度2.31e-14；门限0.5漏检2456/虚警1692，PM/PF=0.311438/0.008807
+一致性 # 共享K范围0至33、均值7.886，原三方法分数/标签/全部曲线点及MLE逐次CSV完全不变；独立重放1000次核对目标/KKT及数据哈希，最大KKT违约约2.30e-14，两种权重和受保护代码哈希不变
+最终验证 # 新增最优性测试后共54项测试通过，源码编译、diff及四曲线PNG视觉检查通过；输出含4004曲线点、四方法PNG/SVG/PDF与NNLS逐次诊断，旧三方法目录保留
+等错误率 # 全部分数断点线性插值GI-HT/HT/MLE/Box-NNLS约0.027771/0.037281/0.054907/0.093076，对应-15.5641/-14.2851/-12.6037/-10.3116 dB；非精确可达的单一确定门限经验相等率，本场景NNLS弱于MLE

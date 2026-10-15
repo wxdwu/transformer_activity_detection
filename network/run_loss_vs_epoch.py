@@ -207,7 +207,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "checkpoint" / "loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows",
+        default=ROOT / "checkpoint" / "loss_vs_epoch_261015_sigma150_trigger0p5_lambda1_covrows",
     )
     parser.add_argument(
         "--epochs",

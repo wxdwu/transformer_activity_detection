@@ -118,12 +118,12 @@ class CovarianceExperimentConfigTests(unittest.TestCase):
         cfg = runner.experiment_system(runner.parse_args([]))
         self.assertEqual((cfg.num_devices, cfg.num_antennas, cfg.pilot_len), (200, 32, 10))
         self.assertEqual((cfg.event_lambda, cfg.event_trigger_prob), (1.0, 0.5))
-        self.assertEqual((cfg.event_sigma_m, cfg.background_activity_prob), (100.0, 0.005))
+        self.assertEqual((cfg.event_sigma_m, cfg.background_activity_prob), (150.0, 0.005))
         self.assertEqual((cfg.cell_radius_m, cfg.noise_mode, cfg.snr_db), (500.0, "snr", 20.0))
         for other in (runner.SystemConfig(), runner.SystemConfig(**DEFAULT_CONFIG["network_train"]["system"])):
             self.assertEqual((other.event_lambda, other.event_trigger_prob), (1.0, 0.5))
-            self.assertEqual(other.event_sigma_m, 100.0)
-        self.assertEqual(runner.OUTPUT_ROOT.name, "covariance_261014_sigma100_trigger0p5_lambda1_mc1000_event")
+            self.assertEqual(other.event_sigma_m, 150.0)
+        self.assertEqual(runner.OUTPUT_ROOT.name, "covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event")
 
     def test_shared_generator_uses_measured_receive_power(self) -> None:
         from dataclasses import replace
@@ -167,8 +167,8 @@ class CovarianceExperimentConfigTests(unittest.TestCase):
         corr = generator._correlation_from_positions(positions)
         torch.testing.assert_close(corr[0, 0, 1], torch.exp(torch.tensor(-0.25)))
         torch.testing.assert_close(corr[0].diagonal(), torch.zeros(2))
-        old = runner.ActivityDataGenerator(replace(cfg, event_sigma_m=120.0), torch.device("cpu"))
-        self.assertLess(float(corr[0, 0, 1]), float(old._correlation_from_positions(positions)[0, 0, 1]))
+        wider = runner.ActivityDataGenerator(replace(cfg, event_sigma_m=2 * cfg.event_sigma_m), torch.device("cpu"))
+        self.assertLess(float(corr[0, 0, 1]), float(wider._correlation_from_positions(positions)[0, 0, 1]))
 
     def test_explicit_command_line_settings_take_priority(self) -> None:
         runner = self.runner
