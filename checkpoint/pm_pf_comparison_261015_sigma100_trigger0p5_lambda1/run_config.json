@@ -1,13 +1,16 @@
 {
   "giht_ckpt": "checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/addcorr/last.pt",
   "ht_ckpt": "checkpoint/loss_vs_epoch_261014_sigma100_trigger0p5_lambda1_covrows/noaddcorr/last.pt",
-  "out_dir": "checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1",
+  "out_dir": "checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls",
   "mc_times": 1000,
   "batch_size": 128,
   "num_thresholds": 1001,
   "seed": 42,
   "max_sweeps": 100,
   "tolerance": 0.0001,
+  "include_nnls": true,
+  "nnls_max_iter": 1000,
+  "nnls_tolerance": 1e-10,
   "device": "cpu",
   "log_every": 128,
   "system_config": {
@@ -144,5 +147,19 @@
     0.0,
     1.0
   ],
-  "coordinate_rng_seed": 43
+  "coordinate_rng_seed": 43,
+  "nnls_solver": {
+    "method": "scipy.optimize.lsq_linear",
+    "algorithm": "bvls",
+    "scipy_version": "1.12.0",
+    "bounds": [
+      0.0,
+      1.0
+    ],
+    "max_iter": 1000,
+    "tolerance": 1e-10,
+    "criterion": "squared Frobenius covariance residual, common power scaling",
+    "convergence_check": "SciPy success and box projected-gradient infinity norm <= tolerance",
+    "label": "Box-NNLS"
+  }
 }

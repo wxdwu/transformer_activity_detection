@@ -1,2 +1,0 @@
-method,sweep,sweep_value,N,M,L,snr_db,activity_mode,noise_mode,mc_times,threshold,PM,PF,error_probability,accuracy,exact_support_rate,active,inactive,missed,false_alarms,mean_activity_ratio,mean_sweeps,converged_fraction,mean_runtime_sec,mean_negative_log_likelihood,noise_variance_source
-covariance_mle_cd,none,,200,32,10,20.0,event,snr,1000,0.5,0.22178544255642912,0.0034146392246270445,0.012025,0.987975,0.701,7886,192114,1749,656,0.03943,15.053,1.0,0.02454623486357741,-348.17234226509373,known_generated
