@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from network.train import build_args, resolve_device, run_training
+from experiments.paths import RESULT_ROOT
 
 
 def parse_pilot_lens(raw: str | None) -> list[int]:
@@ -173,7 +174,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "checkpoint" / "varying_L_261015_sigma150_trigger0p5_lambda1_covrows",
+        default=RESULT_ROOT / "loss_sweeps" / "varying_L",
     )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--steps-per-epoch", type=int, default=None)

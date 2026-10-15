@@ -5,3 +5,4 @@ checkpoints/
 checkpoints_*/
 *.pt
 *.csv
+!result_261015/**/*.csv

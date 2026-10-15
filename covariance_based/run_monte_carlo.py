@@ -25,6 +25,7 @@ from covariance_based.detector import covariance_mle_activity
 from network.config import load_experiment_config, system_config_from_experiment
 from network.data import ActivityDataGenerator, SystemConfig
 from network.train import build_args, build_system_config
+from experiments.paths import RESULT_ROOT
 
 
 MC_TIMES = 1000
@@ -44,7 +45,7 @@ TOLERANCE = 1e-4
 THRESHOLD = 0.5
 NUM_THRESHOLDS = 101
 SEED = 42
-OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event"
+OUTPUT_ROOT = RESULT_ROOT / "single_condition" / "covariance"
 PAPER_EVENT_TEST_OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261014_paper_event"
 PLOT_MIN_PROBABILITY = 1e-4
 DEFAULT_SWEEPS = {

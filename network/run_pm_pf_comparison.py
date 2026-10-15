@@ -34,10 +34,11 @@ from covariance_based.run_monte_carlo import (
 )
 from network.data import ActivityDataGenerator, SystemConfig
 from network.model import build_model_from_config
+from experiments.paths import RESULT_ROOT
 
 
-CHECKPOINT_ROOT = ROOT / "checkpoint" / "loss_vs_epoch_260720_covrows"
-OUTPUT_DIR = ROOT / "checkpoint" / "pm_pf_comparison_261014"
+CHECKPOINT_ROOT = RESULT_ROOT / "loss_vs_epoch"
+OUTPUT_DIR = RESULT_ROOT / "single_condition" / "pm_pf_comparison"
 MC_TIMES = 5000
 METHODS = ("GI-HT", "HT", "Covariance")
 NNLS_METHOD = "Box-NNLS"
@@ -108,6 +109,7 @@ def load_detector(path: Path, method: str, device: torch.device) -> tuple[torch.
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "epoch": int(checkpoint["epoch"]),
         "training_batch_size": int(checkpoint["config"]["batch_size"]),
+        "training_config": checkpoint["config"],
         "system_config": asdict(system),
         "model_config": cfg,
     }
@@ -148,7 +150,7 @@ def curve_from_scores(scores: np.ndarray, labels: np.ndarray, thresholds: np.nda
     ]
 
 
-def plot_comparison(out_dir: Path, curves: dict[str, list[dict]]) -> None:
+def plot_comparison(out_dir: Path, curves: dict[str, list[dict]], *, stem: str = "pm_pf_comparison") -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -176,17 +178,22 @@ def plot_comparison(out_dir: Path, curves: dict[str, list[dict]]) -> None:
     ax.legend(loc="best")
     fig.tight_layout()
     for suffix in ("png", "svg", "pdf"):
-        fig.savefig(out_dir / f"pm_pf_comparison.{suffix}", dpi=300)
+        fig.savefig(out_dir / f"{stem}.{suffix}", dpi=300)
     plt.close(fig)
 
 
 @torch.inference_mode()
 def evaluate_shared_trials(models: dict[str, torch.nn.Module], cfg: SystemConfig,
-                           args: argparse.Namespace, device: torch.device) -> tuple[dict, np.ndarray, list[dict], str]:
+                           args: argparse.Namespace, device: torch.device, *,
+                           methods: tuple[str, ...] | None = None) -> tuple[dict, np.ndarray, list[dict], str]:
+    methods = methods if methods is not None else ((*METHODS, NNLS_METHOD) if args.include_nnls else METHODS)
+    if not methods or len(set(methods)) != len(methods) or set(methods) - {*METHODS, NNLS_METHOD}:
+        raise ValueError("Choose distinct supported comparison methods.")
+    if set(models) != (set(methods) & {"GI-HT", "HT"}):
+        raise ValueError("Loaded neural models must match the selected methods.")
     torch.manual_seed(args.seed)
     coordinate_rng = np.random.default_rng(args.seed + 1)
     generator = ActivityDataGenerator(cfg, torch.device("cpu"))
-    methods = (*METHODS, NNLS_METHOD) if args.include_nnls else METHODS
     scores = {method: np.empty((args.mc_times, cfg.num_devices), dtype=np.float64) for method in methods}
     labels = np.empty((args.mc_times, cfg.num_devices), dtype=np.uint8)
     diagnostics: list[dict] = []
@@ -203,13 +210,15 @@ def evaluate_shared_trials(models: dict[str, torch.nn.Module], cfg: SystemConfig
         y = batch["y"][0].numpy().astype(np.complex128)
         noise = float(batch["noise_var"][0])
         covariance = y @ y.conj().T / cfg.num_antennas
-        result = covariance_mle_activity(b, covariance, noise,
-                                         max_sweeps=args.max_sweeps, tolerance=args.tolerance, rng=coordinate_rng)
-        scores["Covariance"][index] = result.activities
         diagnostics.append({"trial": index + 1, "active": int(labels[index].sum()),
-                            "receiver_noise_variance": noise, "sweeps": result.sweeps,
-                            "converged": int(result.converged), "max_coordinate_step": result.max_coordinate_step})
-        if args.include_nnls:
+                            "receiver_noise_variance": noise})
+        if "Covariance" in methods:
+            result = covariance_mle_activity(b, covariance, noise,
+                                             max_sweeps=args.max_sweeps, tolerance=args.tolerance, rng=coordinate_rng)
+            scores["Covariance"][index] = result.activities
+            diagnostics[-1].update(sweeps=result.sweeps, converged=int(result.converged),
+                                   max_coordinate_step=result.max_coordinate_step)
+        if NNLS_METHOD in methods:
             nnls = covariance_nnls_activity(b, covariance, noise, max_iter=args.nnls_max_iter,
                                             tolerance=args.nnls_tolerance)
             scores[NNLS_METHOD][index] = nnls.activities
@@ -218,15 +227,17 @@ def evaluate_shared_trials(models: dict[str, torch.nn.Module], cfg: SystemConfig
                                    nnls_projected_gradient_norm=nnls.projected_gradient_norm,
                                    nnls_scaled_residual_squared=nnls.scaled_residual_squared,
                                    nnls_power_scale=nnls.power_scale)
-        pending.append({key: batch[key] for key in ("x_b", "x_y", "corr_matrix")})
-        if len(pending) == args.batch_size or index + 1 == args.mc_times:
-            features = {key: torch.cat([row[key] for row in pending]).to(device) for key in pending[0]}
-            lower = index + 1 - len(pending)
-            for method, model in models.items():
-                geometry = features["corr_matrix"] if method == "GI-HT" else None
-                _, probabilities = model(features["x_b"], features["x_y"], geometry)
-                scores[method][lower:index + 1] = probabilities.cpu().numpy()
-            pending.clear()
+        if models:
+            pending.append({key: batch[key] for key in ("x_b", "x_y", "corr_matrix")})
+        if not models or len(pending) == args.batch_size or index + 1 == args.mc_times:
+            if models:
+                features = {key: torch.cat([row[key] for row in pending]).to(device) for key in pending[0]}
+                lower = index + 1 - len(pending)
+                for method, model in models.items():
+                    geometry = features["corr_matrix"] if method == "GI-HT" else None
+                    _, probabilities = model(features["x_b"], features["x_y"], geometry)
+                    scores[method][lower:index + 1] = probabilities.cpu().numpy()
+                pending.clear()
             if args.log_every and (index + 1 >= next_log or index + 1 == args.mc_times):
                 print(f"Shared trials {index + 1}/{args.mc_times} | elapsed={perf_counter() - start:.1f}s", flush=True)
                 next_log = index + 1 + args.log_every

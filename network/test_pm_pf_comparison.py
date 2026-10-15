@@ -95,6 +95,14 @@ class PMPFComparisonTests(unittest.TestCase):
 
     def test_default_batch_size_inherits_checkpoint(self) -> None:
         self.assertIsNone(runner.parse_args([]).batch_size)
+        from network import run_loss_vs_epoch
+        from unittest.mock import patch
+
+        with patch("sys.argv", ["run_loss_vs_epoch.py"]):
+            training = run_loss_vs_epoch.parse_args()
+        comparison = runner.parse_args([])
+        self.assertEqual(comparison.giht_ckpt, training.out_dir / "addcorr" / "last.pt")
+        self.assertEqual(comparison.ht_ckpt, training.out_dir / "noaddcorr" / "last.pt")
 
     def test_nnls_is_optional_and_defaults_are_explicit(self) -> None:
         self.assertFalse(runner.parse_args([]).include_nnls)

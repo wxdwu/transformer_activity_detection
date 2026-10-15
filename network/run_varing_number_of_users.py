@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from network.train import build_args, resolve_device, run_training
+from experiments.paths import RESULT_ROOT
 
 
 def parse_num_users(raw: str | None) -> list[int]:
@@ -163,7 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "checkpoint" / "varying_N_261015_sigma150_trigger0p5_lambda1_covrows",
+        default=RESULT_ROOT / "loss_sweeps" / "varying_N",
     )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--steps-per-epoch", type=int, default=None)

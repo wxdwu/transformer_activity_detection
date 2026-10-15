@@ -89,10 +89,10 @@ The default is now `USE_PAPER_EVENT_TEST_SETTINGS=False` and
 `PILOT_LEN_OVERRIDE=None`, restoring all system settings from `network/train.py`:
 currently `N=200`, `M=32`, `L=10`, radius `500 m`, event-driven activity, and
 measured-SNR noise at `20 dB`. Event count is Poisson(1) capped at 3, response
-scale is `150 m`, peak trigger probability is `0.5`, and background probability
+scale is `100 m`, peak trigger probability is `0.9`, and background probability
 is `0.005`. Pilot entries remain CN(0,1/L). Global activity is not forced to 0.1.
 The event-response and physical-generation formulas are unchanged; the current
-response scale is 150 m, peak trigger is 0.5 and event arrival is 1.0. This aligns the scene
+response scale is 100 m, peak trigger is 0.9 and event arrival is 1.0. This aligns the scene
 and distribution for newly trained Transformers, not the exact historical
 GPU-generated test observations.
 
@@ -255,7 +255,7 @@ when producing a final shared-test-set comparison.
 
 ## Outputs
 
-The output root is `checkpoint/covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event/`, configured by `OUTPUT_ROOT`
+The output root is `result_261015/single_condition/covariance/`, configured by `OUTPUT_ROOT`
 in `run_monte_carlo.py` or `--out-dir`. While the temporary preset is enabled,
 the default root is instead `checkpoint/covariance_261014_paper_event/`,
 configured by `PAPER_EVENT_TEST_OUTPUT_ROOT`, preserving existing results.
@@ -592,7 +592,7 @@ reference code and old trigger=0.5 summary/trial/statistics hashes are unchanged
 The PNG was inspected. At threshold 0, PM=0.146274 and PF=0.092390;
 the saved [0,1] threshold curve has no PM=PF crossing, so no EER is reported.
 
-## Current Event Experiment (261015, Sigma=150, Trigger=0.5)
+## Previous Event Experiment (261015, Sigma=150, Trigger=0.5)
 
 The default peak event-trigger probability is restored to 0.5 and sigma is
 increased to 150 m in train.py, SystemConfig and the JSON defaults. Lambda=1,
@@ -772,3 +772,72 @@ threshold on finite data. Box-NNLS does not outperform MLE in this scene.
 The four-method PNG/SVG/PDF files are in
 `checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls/`;
 the PNG was visually checked. All 54 unit tests and source compilation passed.
+
+## Final Event Scene (261015, Sigma=100, Trigger=0.9, Lambda=1)
+
+The final experiment defaults are sigma=100 m, event lambda=1 and peak trigger
+probability=0.9. They are synchronized in network/train.py, SystemConfig and
+network/config.py. Other training settings remain N=200, L=10, M=32, radius
+500 m, measured SNR=20 dB, background probability=0.005 and at most 3 events.
+The peak trigger is a distance-dependent per-event response parameter, not a
+global activity probability. The geometric kernel automatically uses
+correlation length sqrt(2)*100 m when correlation_length_m=0.
+
+All four Transformer experiment runners inherit this event scene and use
+covariance_rows. Their output names now contain
+261015_sigma100_trigger0p9_lambda1_covrows. The loss-vs-epoch runner trains
+GI-HT/addcorr and HT/noaddcorr sequentially and stores their checkpoints under
+separate mode subdirectories:
+
+```bash
+python network/run_loss_vs_epoch.py --device cuda
+```
+
+The standalone covariance runner inherits the same scene and writes to
+checkpoint/covariance_261015_sigma100_trigger0p9_lambda1_mc1000_event.
+After training the new epoch-100 weights, the joint comparison's default
+checkpoint paths target the new loss-vs-epoch directory. Both MLE and NNLS
+read the scene from the selected weights:
+
+```bash
+python covariance_based/run_monte_carlo.py
+python network/run_pm_pf_comparison.py --include-nnls --device cpu
+```
+
+Historical sections above describe earlier experiments; their reported
+metrics do not apply to this final scene. New neural training and a new
+evaluation are needed for final-scene performance results.
+
+Validation passed: 54 unit tests, source compilation, and small actual runs of
+both modes in all four training entry points. The complete base network used
+CPU, 2 epochs, 2 steps per epoch, batch 4 and 2 evaluation batches. Checkpoint
+reload, saved scene/geometry switches, finite losses, zero skipped updates,
+CSV/PNG output and a 4-realization four-method comparison were checked.
+These are workflow checks, not final performance results. This machine has no
+CUDA; server GPU/BF16 support and batch-128 memory still need a local check:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2 --eval-batches 2 --out-dir checkpoint/server_smoke_261015_sigma100_trigger0p9_lambda1
+```
+
+## Minimum PM+PF Sweep Experiments (261015)
+
+`python covariance_based/run_pe_experiments.py` runs covariance MLE and
+Box-NNLS on L=4,6,...,30, N=50,100,...,250 and SNR=10,12,...,20 dB, matching the
+Transformer experiment lists. The other parameters use the final sigma100,
+lambda1, peak-trigger0.9 event scene. Default MC count is 1000 per point.
+
+One threshold per method/point minimizes PM+PF over the entire MC set using
+all distinct score breakpoints, including endpoints. This is an offline
+empirical minimum, without averaging per-realization minima or dividing by 2.
+`metrics.json` saves the threshold, both conditional rates and counts.
+The complete exact curve and raw scores are saved in NPZ files; per-point
+PM-PF and summary Pe figures are saved as PNG/SVG/PDF.
+
+The shared implementation is in experiments/. Neural training/evaluation is
+provided by network/run_pe_experiments.py. New outputs are classified under
+result_261015/pe_vs_L, pe_vs_N and pe_vs_SNR. Existing single-point and loss
+runners also use result_261015 by default; earlier sections retain historical
+paths where they describe completed old experiments. See
+[the experiment guide](../result_261015/README.md) for complete commands and
+the exact directory structure.

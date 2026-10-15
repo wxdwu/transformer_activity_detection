@@ -110,20 +110,20 @@ class CovarianceExperimentConfigTests(unittest.TestCase):
         self.assertEqual(args.mc_times, 1000)
         self.assertEqual(asdict(runner.experiment_system(args)),
                          asdict(runner.build_system_config(runner.build_args())))
-        self.assertEqual(runner.OUTPUT_ROOT.parent, runner.ROOT / "checkpoint")
+        self.assertEqual(runner.OUTPUT_ROOT, runner.RESULT_ROOT / "single_condition" / "covariance")
 
-    def test_low_load_defaults_are_aligned(self) -> None:
+    def test_final_event_defaults_are_aligned(self) -> None:
         from network.config import DEFAULT_CONFIG
         runner = self.runner
         cfg = runner.experiment_system(runner.parse_args([]))
         self.assertEqual((cfg.num_devices, cfg.num_antennas, cfg.pilot_len), (200, 32, 10))
-        self.assertEqual((cfg.event_lambda, cfg.event_trigger_prob), (1.0, 0.5))
-        self.assertEqual((cfg.event_sigma_m, cfg.background_activity_prob), (150.0, 0.005))
+        self.assertEqual((cfg.event_lambda, cfg.event_trigger_prob), (1.0, 0.9))
+        self.assertEqual((cfg.event_sigma_m, cfg.background_activity_prob), (100.0, 0.005))
         self.assertEqual((cfg.cell_radius_m, cfg.noise_mode, cfg.snr_db), (500.0, "snr", 20.0))
         for other in (runner.SystemConfig(), runner.SystemConfig(**DEFAULT_CONFIG["network_train"]["system"])):
-            self.assertEqual((other.event_lambda, other.event_trigger_prob), (1.0, 0.5))
-            self.assertEqual(other.event_sigma_m, 150.0)
-        self.assertEqual(runner.OUTPUT_ROOT.name, "covariance_261015_sigma150_trigger0p5_lambda1_mc1000_event")
+            self.assertEqual((other.event_lambda, other.event_trigger_prob), (1.0, 0.9))
+            self.assertEqual(other.event_sigma_m, 100.0)
+        self.assertEqual(runner.OUTPUT_ROOT.name, "covariance")
 
     def test_shared_generator_uses_measured_receive_power(self) -> None:
         from dataclasses import replace
@@ -149,13 +149,14 @@ class CovarianceExperimentConfigTests(unittest.TestCase):
             with patch.object(torch, "poisson", return_value=torch.ones(1)) as poisson:
                 _, probabilities, _ = generator._sample_event_activity(positions)
                 torch.testing.assert_close(poisson.call_args.args[0], torch.tensor([1.0]))
-            expected = 0.005 + 0.995 * 0.5 * torch.exp(-torch.tensor([[0.0, 0.5, 2.0]]))
+            expected = 0.005 + 0.995 * 0.9 * torch.exp(-torch.tensor([[0.0, 0.5, 2.0]]))
             torch.testing.assert_close(probabilities, expected)
             with patch.object(torch, "poisson", return_value=torch.zeros(1)):
                 _, background, _ = generator._sample_event_activity(positions)
                 torch.testing.assert_close(background, torch.full((1, 3), 0.005))
-        old = runner.ActivityDataGenerator(replace(cfg, event_lambda=1.0, event_trigger_prob=0.9), torch.device("cpu"))
-        torch.testing.assert_close(generator._correlation_from_positions(positions), old._correlation_from_positions(positions))
+        lower_trigger = runner.ActivityDataGenerator(replace(cfg, event_trigger_prob=0.5), torch.device("cpu"))
+        torch.testing.assert_close(generator._correlation_from_positions(positions),
+                                   lower_trigger._correlation_from_positions(positions))
 
     def test_geometry_distance_scale_follows_event_scale(self) -> None:
         from dataclasses import replace

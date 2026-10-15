@@ -1503,3 +1503,143 @@ checkpoint/pm_pf_comparison_261015_sigma100_trigger0p5_lambda1_nnls/。
 Box-NNLS约0.093076，对应10log10(PM)约-15.5641/-14.2851/-12.6037/-10.3116 dB。
 插值不是精确可达的单一确定门限经验相等率；本场景Box-NNLS弱于MLE，未筛选样本或隐藏结果。
 未重新训练、未改训练默认场景、未覆盖原三方法输出，未提交或推送。
+
+### 16.27 最终事件场景统一为σ100/λ1/峰值触发0.9（261015）
+
+用户确定最终场景后，将network/train.py、network/data.py的SystemConfig及
+network/config.py的JSON默认值同步为EVENT_SIGMA_M=100、EVENT_LAMBDA=1、
+EVENT_TRIGGER_PROB=0.9；实际训练仍N200/L10/M32/R500/SNR20、背景0.005、最多3事件。
+峰值触发0.9不是全局活跃概率；G默认尺度自动采用sqrt(2)*100米。
+本次仅调整场景参数和输出路径，不改活动生成/噪声公式、网络、loss或训练超参数。
+
+train.py及loss-vs-epoch、varying-L/SNR/N四入口默认输出采用
+261015_sigma100_trigger0p9_lambda1_covrows标记；四入口继续从build_args继承场景。
+addcorr启用三个几何模块；noaddcorr最终模型配置关闭三个模块，均使用covariance_rows。
+协方差入口仍从train.py继承相同分布，输出改为
+checkpoint/covariance_261015_sigma100_trigger0p9_lambda1_mc1000_event/。
+
+PM-PF对比入口默认权重根目录同步为
+checkpoint/loss_vs_epoch_261015_sigma100_trigger0p9_lambda1_covrows/，
+分别读取addcorr/noaddcorr/last.pt；默认输出为
+checkpoint/pm_pf_comparison_261015_sigma100_trigger0p9_lambda1/，NNLS可选。
+对比仍读取权重内保存的实际场景；新权重须由服务器完成训练后生成。
+
+```bash
+CUDA_VISIBLE_DEVICES=5 nohup python network/run_loss_vs_epoch.py --device cuda > nohup_loss_vs_epoch_261015_sigma100_trigger0p9_lambda1.log 2>&1 &
+```
+
+从项目根目录执行，默认依次训练GI-HT和HT各100个epoch，每epoch2000步、batch128。
+两种模型日志与last.pt/best_pm.pt分开保存；loss_by_epoch.csv和loss_vs_epoch.png位于根输出目录。
+README及协方差README同步当前场景和运行方式；历史实验记录保留。
+
+验证完成：54项单元测试、network/covariance_based全部源码编译及diff检查通过。
+四个训练入口分别真实运行addcorr/noaddcorr，均使用完整base网络、CPU、2个epoch、
+每epoch2步、batch4、eval2；各入口取默认物理点L10/SNR20/N200，未运行完整扫描或正式训练。
+八次训练的loss/PM/PF均有限且skip=0，last.pt/best_pm.pt、日志、CSV及PNG均生成；
+保存场景逐项符合最终设置，三个模块开关和covariance_rows正确，严格权重重载通过。
+重载HT后用真实G/None/随机G分别前向，输出逐项相同。
+
+使用临时训练的epoch2权重进行4次共享观测的GI-HT/HT/MLE/Box-NNLS小测，
+确认对比读取最终场景、四条曲线和全部输出生成，两个传统方法均报告收敛。
+这些短测仅验证流程，不能作为正式检测性能结果。loss图视觉检查通过。
+测试文件仅在/private/tmp/giht_final_scene_261015.Awlnf2/，正式checkpoint目录未产生新结果。
+网络、loss、MLE/NNLS求解器及独立论文复现入口与HEAD逐文件哈希相同；未提交或推送本次更改。
+本机没有CUDA，未验证服务器GPU、BF16兼容性或batch128显存；正式运行前可先执行：
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2 --eval-batches 2 --out-dir checkpoint/server_smoke_261015_sigma100_trigger0p9_lambda1
+```
+
+短测默认仍使用正式batch128，并通过独立--out-dir保存；正式训练命令见上文。
+
+### 16.28 新增最小Pe扫描与统一result_261015输出（261015）
+
+按用户定义采用Pe=PM+PF，每个参数点/方法在整组Monte Carlo观测上选一个最优阈值，
+不除以2，不改训练loss，不以逐个样本的最优阈值取平均。该数值是离线经验PM-PF曲线的最小值，
+不等同于独立校准后固定门限的泛化误差。PM和PF分别按全部活跃/非活跃实例累计，空活跃样本仍计入PF；
+整组数据缺少任一类别时明确报错，不将未定义PM/PF写为0。
+
+新增experiments/pe_metrics.py：exact_min_pe在[0,1]内全部不同分数断点及两个端点搜索，
+采用score>threshold，同分数成组处理；用整数计数比较最优目标，同值取最小阈值。
+保存完整exact_curve.npz及scores.npz；CSV/图最多抽样2001个断点并额外包含精确最优点，
+抽样只影响画图，不影响最优Pe。每点记录min_pe、PM/PF、最优阈值、计数、场景及数据/权重哈希。
+
+新增experiments/run_pe.py统一扫描，默认直接调用现有GI-HT扫描列表：L=4,6,...,30，
+N=50,100,...,250，SNR=10,12,...,20；未扫描字段继承train.py最终σ100/λ1/峰值0.9场景，
+标称N200/L10/M32/R500/SNR20。MC默认每点1000次、种子42，可由--mc-times/--seed覆盖。
+新增covariance_based/run_pe_experiments.py：默认传统MLE和Box-NNLS，直接CPU Monte Carlo。
+新增network/run_pe_experiments.py：默认逐点训练GI-HT/HT各100epoch，并评估该点last.pt；
+保持base网络、covariance_rows、原loss和优化设置，HT显式关闭三个几何模块。
+
+调用链：两个run入口 -> experiments.run_pe.main -> sweep_points/training_args/prepare_models
+-> network.run_pm_pf_comparison.evaluate_shared_trials(methods=...) -> save_method_result/exact_min_pe
+-> refresh_sweep -> 逐点合并PM-PF与Pe vs L/N/SNR汇总。
+原evaluate_shared_trials增加可选方法子集，默认三/四方法接口不变；只运行已选求解器，
+无网络时不积攒推理batch。始终逐次在CPU生成观测，生成器/种子与推理batch独立，
+两网络推理默认继承训练batch、保留尾batch，float32无autocast；传统方法使用已知生成噪声。
+MC非收敛样本保留并记录，传统方法不使用真实K、活跃先验、G或事件位置。
+
+新增experiments/paths.py统一默认根目录result_261015；本次Pe结果分为
+pe_vs_L/、pe_vs_N/、pe_vs_SNR/，各自含checkpoints/、points/<点>/<方法>/和汇总CSV/PNG/SVG/PDF。
+每个方法/点均保存独立PM-PF图，含SNR；每点再绘制可用方法合并图。
+现有loss-vs-epoch输出到loss_vs_epoch/，旧loss-only扫描输出到loss_sweeps/varying_*/，
+单次训练输出到training/addcorr/，原单点MLE/合并图输出到single_condition/对应子目录。
+历史checkpoint结果不移动，独立论文复现保持原历史输出。新增result_261015/README.md和logs/目录；
+.gitignore仅对该结果树放行CSV，权重/checkpoints目录继续忽略。
+
+--stage evaluate仅加载权重评估，--stage plot仅汇总现有结果；--checkpoint-root允许
+从独立结果树读取服务器权重。已完整训练的匹配权重复用，epoch或训练超参数不匹配时拒绝复用；
+--retrain明确重新开始训练，不实现中断优化器续训。汇总核对未扫描参数、MC次数、种子、数据哈希
+及两网络推理batch/epoch，避免混合不匹配结果。框架版本导致CPU随机序列不同时，
+可从复制回的权重在同一机器/新输出根目录重新联合评估四种方法。
+
+```bash
+python covariance_based/run_pe_experiments.py
+CUDA_VISIBLE_DEVICES=5 nohup python network/run_pe_experiments.py --device cuda > result_261015/logs/neural_all.log 2>&1 &
+python covariance_based/run_pe_experiments.py --stage plot
+```
+
+通过--sweeps L/N/SNR选择单扫描；--values仅用于单扫描，双方保持相同列表。
+Pe图默认对数纵轴，可--pe-scale linear；真实0保留在数据中，对数轴不以任意正数替换。
+README及协方差README同步新入口、路径与指标约定；旧run_varying_l/varing_SNR/varing_number_of_users
+仍为loss曲线，Pe实验使用新增入口。
+
+验证完成：66项单元测试、experiments/network/covariance_based全部源码编译及diff检查通过。
+新增测试覆盖粗网格间的精确最优点、同分数成组/最低最优阈值、独立直接计数核验、
+条件错误率和总错误率区别、缺失类别、场景/扫描继承、方法子集的数据/分数完全一致、
+汇总拒绝不匹配结果、完成权重复用/不完整权重拒绝，以及中断重写时不发布旧最优指标。
+
+真实端到端短测覆盖L4/L16、N50/N250、SNR10/SNR20六个点；每点先传统MLE/Box-NNLS，
+再完整base GI-HT/HT的CPU训练（各2epoch、每epoch1步、batch4、eval1），每方法8次MC。
+十二次训练均完成且skip=0，重载严格成功；两阶段的观测哈希、标签和原始分数核对通过。
+逐点以保存分数在最优阈值重新计算PM/PF/Pe，与完整曲线最小值及metrics.json一致；
+全部逐方法/逐点合并PM-PF及三类Pe汇总PNG/SVG/PDF、CSV/NPZ生成并通过只绘图模式重画。
+另用独立--checkpoint-root和全新输出目录联合评估四方法，分数/标签与分阶段结果逐项相同。
+Pe及PM-PF图已视觉检查；N50短测出现的真实Pe=0被保留，没有替换为任意正值。
+
+短测全部位于/private/tmp/pe_experiments_261015.vt1wnO/，不代表正式算法性能；
+正式result_261015内已建立说明、logs及三类Pe的points/checkpoints目录，未生成正式扫描数据。
+网络、loss、MLE/NNLS求解器及独立论文复现入口与HEAD哈希相同；未移动历史实验，未提交或推送。
+本机CPU未验证服务器CUDA/BF16或正式batch128显存，服务器短测命令见result_261015/README.md。
+
+### 16.29 三组神经Pe实验的独立并行入口（261015）
+
+原network/run_pe_experiments.py默认串行运行L、N、SNR三组。为分配不同GPU并行运行，
+新增network/run_pe_vs_L.py、run_pe_vs_N.py、run_pe_vs_SNR.py，分别固定单个扫描轴，
+默认均训练/评估GI-HT与HT、每点各100epoch。组内参数点/模型依次执行，三个独立进程可并行。
+
+experiments.run_pe.parse_args/main增加可选fixed_sweep参数：独立入口仅允许对应扫描轴，
+通用入口仍保留原全部/自定义扫描行为。三组分别写result_261015/pe_vs_L、pe_vs_N、pe_vs_SNR，
+日志分别为logs/neural_L.log、neural_N.log、neural_SNR.log，使用同一份项目即可。
+原有--values、--stage evaluate/plot、训练/MC参数继续可用。
+
+```bash
+mkdir -p result_261015/logs
+CUDA_VISIBLE_DEVICES=5 nohup python network/run_pe_vs_L.py --device cuda > result_261015/logs/neural_L.log 2>&1 &
+CUDA_VISIBLE_DEVICES=6 nohup python network/run_pe_vs_N.py --device cuda > result_261015/logs/neural_N.log 2>&1 &
+CUDA_VISIBLE_DEVICES=7 nohup python network/run_pe_vs_SNR.py --device cuda > result_261015/logs/neural_SNR.log 2>&1 &
+```
+
+README和结果指南同步独立文件及并行命令。新增固定扫描隔离测试，67项测试、全源码编译、
+diff检查通过。三个独立CLI在CPU上同时重绘临时L4/L16、N50/N250、SNR10/SNR20结果，
+均成功且输出分属各自目录；未重新训练或开展正式扫描，未验证服务器GPU并行。

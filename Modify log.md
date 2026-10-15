@@ -325,3 +325,40 @@ README.md、covariance_based/README.md、CALL_CHAIN.md # 补充方法、数学�
 一致性 # 共享K范围0至33、均值7.886，原三方法分数/标签/全部曲线点及MLE逐次CSV完全不变；独立重放1000次核对目标/KKT及数据哈希，最大KKT违约约2.30e-14，两种权重和受保护代码哈希不变
 最终验证 # 新增最优性测试后共54项测试通过，源码编译、diff及四曲线PNG视觉检查通过；输出含4004曲线点、四方法PNG/SVG/PDF与NNLS逐次诊断，旧三方法目录保留
 等错误率 # 全部分数断点线性插值GI-HT/HT/MLE/Box-NNLS约0.027771/0.037281/0.054907/0.093076，对应-15.5641/-14.2851/-12.6037/-10.3116 dB；非精确可达的单一确定门限经验相等率，本场景NNLS弱于MLE
+
+261015:
+34、统一最终事件场景为σ100、λ1、峰值触发0.9并检查服务器训练入口：
+network/train.py、network/data.py、network/config.py # σ150改为100、触发0.5改为0.9，λ保持1；背景0.005/最多3事件及N200/L10/M32/R500/SNR20训练设置保持，G默认尺度随σ同步
+train.py及四个训练run # 默认输出使用261015_sigma100_trigger0p9_lambda1_covrows标记；两模式均继承相同场景、使用covariance_rows
+covariance_based/run_monte_carlo.py # 继承最终Transformer场景，默认输出改为covariance_261015_sigma100_trigger0p9_lambda1_mc1000_event
+network/run_pm_pf_comparison.py # 默认读取最终场景loss-vs-epoch内两模式last.pt，合并图目录同步最终场景；显式传入历史权重时仍读取其保存场景
+covariance_based/test_detector.py、network/test_pm_pf_comparison.py # 同步参数/响应预期与输出路径检查，检查PM-PF默认权重与训练输出对应
+README.md、covariance_based/README.md、CALL_CHAIN.md # 同步最终场景、输出及服务器命令；CALL_CHAIN仅追加16.27，历史文字保留
+保留 # 活动/噪声生成公式、网络、loss、求解器及训练超参数不变；正式100-epoch训练由服务器完成
+验证 # 54项单元测试、全源码编译及diff检查通过；四训练入口各跑两模式，完整base/CPU/2 epoch×2步/batch4/eval2，物理点L10/SNR20/N200；loss/PM/PF有限、skip=0、两种权重保存/严格重载、日志/CSV/PNG及配置检查通过
+无相关性对照 # 保存的HT模型配置关闭三个几何模块，真实G/None/随机G前向结果逐项相同，两种模式均使用最终场景和covariance_rows
+共享对比短测 # 临时epoch2权重下4次观测，GI-HT/HT/MLE/Box-NNLS输出与绘图通过，两种传统方法报告收敛；仅验证流程，不作为正式性能结论
+范围 # 测试结果仅在/private/tmp/giht_final_scene_261015.Awlnf2/，loss图已检查；网络/loss/MLE/NNLS/独立复现入口与HEAD哈希一致；本机CPU无法验证服务器CUDA/BF16或batch128显存，未正式训练/提交/推送
+
+261015:
+35、新增最小Pe=PM+PF的L/N/SNR实验与result_261015结果树：
+experiments/pe_metrics.py # 精确搜索全部分数断点及0/1端点，每方法/点一个全体MC最优门限；同分数成组、同最优值取最低阈值，保存完整曲线/原始分数/PM-PF/计数，Pe不除2，训练loss不变
+experiments/run_pe.py # 复用现有L/N/SNR列表，统一传统Monte Carlo、逐点网络训练/评估及合并绘图；默认1000次/种子42，网络各点epoch100；支持单扫描/自定义列表、只评估/只绘图、匹配完成权重复用和独立权重根目录
+covariance_based/run_pe_experiments.py、network/run_pe_experiments.py # 分别为MLE+Box-NNLS和GI-HT+HT入口，全部继承最终σ100/λ1/峰值0.9场景，其他未扫描参数不变
+network/run_pm_pf_comparison.py # 共享评估增加方法子集，传统和神经分开运行仍生成同一组CPU观测；保留旧默认接口，保存训练配置，推理保留原batch及尾batch行为
+experiments/paths.py、现有四个训练run/train.py/单点MLE和PM-PF入口 # 本次默认输出统一result_261015，按pe_vs_*、loss_vs_epoch、loss_sweeps、training、single_condition分类；未移动历史结果或独立论文复现目录
+result_261015/README.md、logs/.gitkeep、README.md、covariance_based/README.md # 提供目录树、正式/服务器短测/合并命令，区分经验曲线最小Pe与独立校准误差；原loss-only入口功能保持
+.gitignore # 仅放行result_261015树内CSV，权重及checkpoints目录仍忽略
+检查机制 # 汇总核对场景、MC次数、种子、观测哈希及两网络推理batch/epoch；整组缺少类别时不伪报0，所有非收敛试验仍纳入统计；实际0值不伪造为正数
+验证 # 66项单元测试、源码编译与diff通过；包含精确阈值/同分数/独立计数、方法子集一致性、结果合并拒绝混用、完成权重复用及中断重写指标发布检查
+端到端短测 # L4/L16、N50/N250、SNR10/SNR20，传统和网络分阶段、各方法每点8次MC；完整base GI-HT/HT共12次CPU训练（2epoch×1步/batch4/eval1）均skip=0，逐点指标/原始分数/完整曲线和四方法观测哈希一致
+输出核验 # 逐方法及逐点合并PM-PF、Pe汇总PNG/SVG/PDF、CSV/NPZ及只绘图模式通过；另从独立checkpoint-root在新目录联合评估四方法，分数/标签逐项相同；Pe和PM-PF图已视觉检查，真实0值保留
+保留 # 短测结果仅在/private/tmp/pe_experiments_261015.vt1wnO/，正式结果根目录仅建说明/分类目录；网络/loss/两传统求解器/独立复现入口与HEAD哈希一致；未正式训练或完整扫描、未改历史结果、未提交或推送；本机未验证CUDA/BF16/正式显存
+
+261015:
+36、新增L/N/SNR三组神经Pe实验的独立运行入口：
+network/run_pe_vs_L.py、run_pe_vs_N.py、run_pe_vs_SNR.py # 分别固定单个扫描轴，默认各点依次训练/评估GI-HT与HT，各100epoch；三个进程可在不同GPU并行，输出分属pe_vs_L/N/SNR和独立日志
+experiments/run_pe.py # parse_args/main增加可选fixed_sweep，限制独立入口的扫描选择，通用入口的默认串行三组行为保持；其他CLI参数复用
+experiments/test_pe_experiments.py # 新增扫描隔离/默认方法和epoch检查；67项测试、全源码编译和diff通过
+README.md、result_261015/README.md、CALL_CHAIN.md # 同步三个独立入口及GPU5/6/7并行启动示例，CALL_CHAIN仅追加16.29
+验证 # 三个独立CLI在CPU上同时执行临时结果的只绘图模式，分别覆盖L4/16、N50/250、SNR10/20，均成功；未正式训练/扫描，未验证服务器GPU并行，未提交或推送
