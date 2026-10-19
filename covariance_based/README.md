@@ -840,6 +840,6 @@ The shared implementation is in experiments/. Neural training/evaluation is
 provided by network/run_pe_experiments.py. New outputs are classified under
 result_261015/pe_vs_L, pe_vs_N and pe_vs_SNR. Existing single-point and loss
 runners also use result_261015 by default; earlier sections retain historical
-paths where they describe completed old experiments. See
-[the experiment guide](../result_261015/README.md) for complete commands and
-the exact directory structure.
+paths where they describe completed old experiments. The result tree is
+local-only and ignored by Git. See [the experiment call chain](../CALL_CHAIN.md)
+for commands and the directory structure.

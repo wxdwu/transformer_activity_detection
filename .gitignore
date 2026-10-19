@@ -5,4 +5,6 @@ checkpoints/
 checkpoints_*/
 *.pt
 *.csv
-!result_261015/**/*.csv
+
+# Experiment outputs stay local.
+/result_261015/

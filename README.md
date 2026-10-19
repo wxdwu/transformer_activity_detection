@@ -124,8 +124,9 @@ GI-HT and HT at epoch 100; the third redraws the joint figures after results
 are collected. Default MC count is 1000 per point for every method. All new
 outputs are organized in `result_261015/`. The earlier loss-only runners now
 save under `result_261015/loss_sweeps/`; their loss metric is unchanged.
-See [the experiment guide](result_261015/README.md) for the directory tree,
-server commands, sweep overrides and offline threshold-selection convention.
+The result tree is local-only and ignored by Git. See
+[the experiment call chain](CALL_CHAIN.md) for server commands, sweep overrides,
+output organization and the offline threshold-selection convention.
 
 For parallel neural sweeps on separate GPUs, use the dedicated entry points
 `network/run_pe_vs_L.py`, `network/run_pe_vs_N.py` and
