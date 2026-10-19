@@ -1643,3 +1643,112 @@ CUDA_VISIBLE_DEVICES=7 nohup python network/run_pe_vs_SNR.py --device cuda > res
 README和结果指南同步独立文件及并行命令。新增固定扫描隔离测试，67项测试、全源码编译、
 diff检查通过。三个独立CLI在CPU上同时重绘临时L4/L16、N50/N250、SNR10/SNR20结果，
 均成功且输出分属各自目录；未重新训练或开展正式扫描，未验证服务器GPU并行。
+
+### 16.30 按要求移除临时服务器短测代码（261015）
+
+按用户要求删除刚新增的独立短测脚本及配套测试，撤销两个README内新增的运行说明，
+清理本次短测的编译缓存和临时输出。正式实验脚本、场景设置和既有实验结果保持原样。
+短测代码未提交或推送，不保留可执行入口；这里只记录本次删除。
+
+### 16.31 合并服务器正式结果并核对跨环境兼容性（261019）
+
+将下载的result_261015_2/按原目录结构合并到result_261015/，仅复制缺失文件，
+跳过.DS_Store，不删除源目录，不覆盖目标已有文件。480个无冲突源文件与目标SHA-256一致，
+78个冲突均为既有汇总/逐点合并图及配置，保留目标版本，服务器版本仍在源目录；
+原目标492个文件逐一核对，内容全部未变。GI-HT/HT逐方法结果、权重及loss_vs_epoch均已复制。
+
+正式完成结果：服务器两网络的L4至22每隔2共10点，N50至250共5点，SNR10至20共6点；
+本地两传统方法L4至30共14点，N/SNR完整。用户最终绘图选L4至20，共9点；
+所需四方法原始结果齐全，但复制目录不会自动更新原有传统方法汇总图。
+
+兼容性调用：experiments.pe_metrics.check_compatible -> 核对场景/次数/种子/指标/数据哈希。
+双方场景、MC1000、种子42及指标完全一致，服务器网络均epoch100、推理batch128；
+传统方法内部、两网络内部校验分别通过，但所有重合点的跨环境dataset_sha256不一致，
+因此未绕过检查生成四方法合并图。全部已保存活跃标签逐项一致，L/N/SNR分别核对
+200万/75万/120万个实例；标签一致不等于接收观测完全一致，未存原始观测，未量化其差异。
+记录环境本地PyTorch2.2.2/NumPy1.26.4，服务器PyTorch2.11.0+cu128/NumPy2.4.6，
+环境数值差异是可能原因，不能仅由版本认定原因或直接修改哈希。
+
+新增result_261015/MERGE_REPORT_261019.md，记录合并验证、原汇总图状态及统一评估命令：
+network/run_pe_experiments.py --stage evaluate -> 从result_261015加载权重，
+四方法在同一机器共享观测，写入全新result_261015/shared_evaluation；
+L显式限定4至20，N/SNR使用原列表。此步骤无需重新训练，本次尚未执行正式重新评估。
+本次不改算法、loss、数据分布和兼容性校验，不提交或推送。
+
+### 16.32 按用户要求允许同场景不同观测结果直接合并曲线（261019）
+
+新增--allow-different-observations显式开关，仅允许与--stage plot一起使用。
+调用链：run_pe入口 -> parse_args/main -> refresh_sweep -> check_compatible。
+默认仍要求同点观测哈希一致；显式开启后仅跳过该项，保留场景、MC次数、种子、指标、
+阈值规则/范围及两网络epoch/推理batch一致性检查。这里的哈希针对测试观测，不包含训练数据。
+
+使用各方法已保存的min_pe和PM-PF曲线绘图，不重新训练或测试，不改变任何方法的
+metrics.json、原始分数、阈值或哈希。summary_config.json新增开关状态、
+observation_hashes_match及逐点/逐方法原始哈希，明确本图不强制配对相同观测。
+
+用户自行运行：
+```bash
+python covariance_based/run_pe_experiments.py --stage plot --sweeps L --values 4 6 8 10 12 14 16 18 20 --allow-different-observations
+python covariance_based/run_pe_experiments.py --stage plot --sweeps N SNR --allow-different-observations
+```
+
+结果仍写result_261015/pe_vs_L、pe_vs_N、pe_vs_SNR，绘制所有已有方法的Pe汇总和逐点PM-PF。
+结果指南及合并报告同步新命令，前节统一重评估建议改为可选方案；本次不运行用户正式绘图。
+验证：70项单元测试、修改源码编译通过；对真实结果只执行兼容性检查，L9点/N5点/SNR6点
+共80份方法结果均通过新策略，四方法齐全。测试绘图仅在临时目录，不改正式汇总图。
+
+### 16.33 取消Pe扫描中单方法单参数点的独立绘图（261019）
+
+按用户要求，experiments.pe_metrics.save_method_result不再调用单方法plot_comparison，
+L/N/SNR扫描的Covariance、Box-NNLS、GI-HT、HT均通过该共享保存函数生效。
+points/<参数点>/<方法>/只保存scores.npz、exact_curve.npz、pm_pf_curve.csv、
+trials.csv及metrics.json，不再新建或重画pm_pf_curve.png/svg/pdf。
+精确阈值搜索、Pe/PM/PF计算、原始分数、诊断、权重和训练loss全部保持不变。
+
+refresh_sweep仍生成Pe vs L/N/SNR汇总图；每个参数点至少有两种可用方法时，
+在points/<参数点>/生成多方法pm_pf_comparison.png/svg/pdf；仅一种方法时不画单曲线比较图，
+但该方法仍纳入Pe汇总及CSV。既有单方法图片不自动删除，历史及独立单条件实验入口不改。
+
+experiments/test_pe_experiments.py同步断言无单方法图片，新增四方法仅保存五种数据文件
+且不调用绘图器、单方法点跳过比较但保留汇总的测试；中断保存测试改为模拟指标发布失败，
+继续验证旧metrics.json不会被误用。根README、协方差README和结果指南同步输出规则。
+验证：72项单元测试及修改源码编译通过；临时目录验证数据完整、单方法无图，
+多方法PM-PF与Pe汇总仍正常生成。未执行正式训练/评估/绘图，未删除历史图片。
+
+### 16.34 将L扫描默认训练/测试/绘图范围缩小为4至14（261019）
+
+network/run_varying_l.py的parse_pilot_lens默认列表改为[4,6,8,10,12,14]，
+loss-vs-L的Matplotlib和备用SVG横轴同步改为4至14，CLI帮助同步新范围。
+experiments.run_pe.SWEEPS继续从该解析器继承，因此run_pe_vs_L及通用Pe入口的
+训练、测试、只绘图默认均仅处理这6点，不再默认训练或读取L16及后续点。
+covariance_based/run_monte_carlo.py的DEFAULT_SWEEPS同步，保持传统方法与网络默认范围一致。
+
+N/SNR扫描列表及其标称L10不变；网络、loss、物理场景、训练epoch和求解器不变。
+已有L>14结果及权重不删除、不移动；显式--values/--pilot-lens仍可覆盖默认列表，
+因此旧命令中指定4至20/30的参数需要移除或改为4至14。服务器需同步本次代码后生效。
+
+根README、协方差README及结果指南同步默认范围和绘图命令。
+新增测试检查三个Pe阶段及传统/旧loss入口使用相同6点、N/SNR列表和标称L10不变，
+并检查备用SVG刻度为4至14、两端点正确落在横轴两端。
+验证：74项单元测试、相关源码编译通过；测试结果仅在临时目录，未开展正式实验或重绘历史图。
+
+### 16.35 按要求删除已有单方法单参数点图片（261019）
+
+仅清理result_261015/pe_vs_L、pe_vs_N、pe_vs_SNR内
+points/<参数点>/<GI-HT|HT|Covariance|Box-NNLS>/pm_pf_curve.png/svg/pdf。
+删除276个文件，L/N/SNR分别144/60/72个；数据NPZ/CSV/JSON、训练权重/日志、
+参数点层的多方法pm_pf_comparison及Pe汇总图片全部保留，不清理其他结果目录。
+删除前后核对其余700个文件的路径及内容SHA-256，完全一致；目标目录内剩余单方法图片为0。
+此次只执行历史图片清理，不改变算法或运行配置，不进行训练/测试/重绘，未提交或推送。
+
+### 16.36 按要求删除L从16开始的逐点结果与训练文件（261019）
+
+清理当前result_261015/pe_vs_L：删除points/内L16/L18/L20/L22/L24/L26/L28/L30，
+以及checkpoints/addcorr和noaddcorr内的L16/L18/L20/L22/L24。
+共18个目录、174个文件，包含这些点的四方法数据、逐点图片、网络权重及各点train.log；
+L24的未完整运行训练文件一并删除。L4/6/8/10/12/14及N/SNR、loss_vs_epoch结果全部保留。
+
+删除前后核对其余526个文件的路径及内容SHA-256，完全一致；当前结果树不再含L>=16目录。
+核验现有Pe汇总CSV已是6点/四方法共24行，summary_config及观测哈希列表也仅含4至14，
+因此无需重写汇总或重新绘图。跨点控制台总日志及历史修改记录保留，不改算法/配置，
+不进行训练或测试，未提交或推送。

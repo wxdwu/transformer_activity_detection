@@ -66,7 +66,6 @@ def save_method_result(out: Path, method: str, scores: np.ndarray, labels: np.nd
     rows = sampled_curve(curve, optimum, method)
     write_csv(out / "pm_pf_curve.csv", CURVE_FIELDS, rows)
     write_csv(out / "trials.csv", list(trials[0]), trials)
-    plot_comparison(out, {method: rows}, stem="pm_pf_curve")
     record = {**metadata, **optimum, "schema_version": 1, "method": method, "metric": METRIC,
               "decision_rule": "score > threshold", "threshold_range": [0.0, 1.0],
               "threshold_selection": "one empirical optimum per method and parameter point, all score breakpoints",
@@ -78,7 +77,8 @@ def save_method_result(out: Path, method: str, scores: np.ndarray, labels: np.nd
     return record
 
 
-def check_compatible(records: list[dict], sweep_field: str) -> None:
+def check_compatible(records: list[dict], sweep_field: str, *,
+                     allow_different_observations: bool = False) -> None:
     if not records:
         return
     reference = records[0]
@@ -91,7 +91,7 @@ def check_compatible(records: list[dict], sweep_field: str) -> None:
             if record[name] != reference[name]:
                 raise ValueError(f"Cannot merge results with different {name}.")
         same_point = [r for r in records if r["value"] == record["value"]]
-        if len({r["dataset_sha256"] for r in same_point}) != 1:
+        if not allow_different_observations and len({r["dataset_sha256"] for r in same_point}) != 1:
             raise ValueError("Methods at the same point must use identical observations.")
         neural = [r for r in same_point if r["method"] in ("GI-HT", "HT")]
         if len({(r["inference_batch_size"], r["checkpoint_epoch"]) for r in neural}) > 1:
@@ -136,7 +136,8 @@ def plot_pe(out: Path, sweep: str, records: list[dict], scale: str) -> None:
     plt.close(fig)
 
 
-def refresh_sweep(out: Path, sweep: str, field: str, points: list[tuple[float, str]], scale: str) -> list[dict]:
+def refresh_sweep(out: Path, sweep: str, field: str, points: list[tuple[float, str]], scale: str, *,
+                  allow_different_observations: bool = False) -> list[dict]:
     records, point_curves = [], {}
     for value, label in points:
         curves = {}
@@ -156,15 +157,27 @@ def refresh_sweep(out: Path, sweep: str, field: str, points: list[tuple[float, s
                                   for row in csv.DictReader(handle)]
         if curves:
             point_curves[label] = curves
-    check_compatible(records, field)
+    check_compatible(records, field, allow_different_observations=allow_different_observations)
     if not records:
         raise FileNotFoundError(f"No completed results to plot under {out}.")
+    observation_hashes = {
+        label: {r["method"]: r["dataset_sha256"] for r in records if r["value"] == value}
+        for value, label in points if label in point_curves
+    }
+    hashes_match = all(len(set(hashes.values())) == 1 for hashes in observation_hashes.values())
+    if not hashes_match:
+        print(f"{sweep}: merging same-scene results without identical observations; "
+              "per-method metrics and hashes are unchanged.", flush=True)
     write_csv(out / f"pe_vs_{sweep}.csv", SUMMARY_FIELDS,
               [{key: record.get(key) for key in SUMMARY_FIELDS} for record in records])
     plot_pe(out, sweep, records, scale)
     for label, curves in point_curves.items():
-        plot_comparison(out / "points" / label, curves)
+        if len(curves) > 1:
+            plot_comparison(out / "points" / label, curves)
     write_json(out / "summary_config.json", {"metric": METRIC, "sweep": sweep, "requested_values": [v for v, _ in points],
                                              "completed": [{"method": r["method"], "value": r["value"]} for r in records],
-                                             "pe_axis_scale": scale})
+                                             "pe_axis_scale": scale,
+                                             "allow_different_observations": allow_different_observations,
+                                             "observation_hashes_match": hashes_match,
+                                             "observation_hashes": observation_hashes})
     return records

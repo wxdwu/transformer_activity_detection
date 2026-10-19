@@ -9,12 +9,13 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from xml.etree import ElementTree
 
 import numpy as np
 import torch
 
 from experiments import run_pe
-from experiments.pe_metrics import METRIC, check_compatible, exact_min_pe, refresh_sweep, save_method_result
+from experiments.pe_metrics import METHODS, METRIC, check_compatible, exact_min_pe, refresh_sweep, save_method_result
 from network.run_pm_pf_comparison import evaluate_shared_trials
 
 
@@ -65,6 +66,29 @@ class ThresholdSelectionTests(unittest.TestCase):
 
 
 class PeExperimentTests(unittest.TestCase):
+    def test_different_observations_flag_is_explicit_and_plot_only(self) -> None:
+        args = run_pe.parse_args([], ("Covariance", "Box-NNLS"), "evaluate")
+        self.assertFalse(args.allow_different_observations)
+        args = run_pe.parse_args(["--stage", "plot", "--allow-different-observations"],
+                                 ("Covariance", "Box-NNLS"), "evaluate")
+        self.assertTrue(args.allow_different_observations)
+        for stage in ("evaluate", "train-evaluate"):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                run_pe.parse_args(["--stage", stage, "--allow-different-observations"],
+                                  ("Covariance", "Box-NNLS"), "evaluate")
+
+    def test_plot_only_forwards_observation_policy_without_training_or_evaluation(self) -> None:
+        with TemporaryDirectory() as temporary, patch.object(run_pe, "refresh_sweep") as refresh, \
+                patch.object(run_pe, "run_training") as train, \
+                patch.object(run_pe, "evaluate_shared_trials") as evaluate:
+            run_pe.main(["--stage", "plot", "--sweeps", "L", "--values", "4", "20",
+                         "--out-root", temporary, "--allow-different-observations"])
+            refresh.assert_called_once_with(Path(temporary) / "pe_vs_L", "L", "pilot_len",
+                                            [(4, "L04"), (20, "L20")], "log",
+                                            allow_different_observations=True)
+            train.assert_not_called()
+            evaluate.assert_not_called()
+
     def test_fixed_entry_points_are_restricted_to_one_sweep(self) -> None:
         for sweep in run_pe.SWEEPS:
             args = run_pe.parse_args([], ("GI-HT", "HT"), "train-evaluate", fixed_sweep=sweep)
@@ -89,6 +113,38 @@ class PeExperimentTests(unittest.TestCase):
         for values in ([4, 4], [np.nan], [-2], [2.5]):
             with self.assertRaises(ValueError):
                 run_pe.sweep_points("L", values)
+
+    def test_default_l_sweeps_stop_at_14_for_neural_and_traditional_runners(self) -> None:
+        from covariance_based.run_monte_carlo import experiment_points, parse_args
+        from network.run_varying_l import parse_pilot_lens
+
+        expected = [4, 6, 8, 10, 12, 14]
+        for raw in (None, "", "  "):
+            self.assertEqual(parse_pilot_lens(raw), expected)
+        self.assertEqual([value for value, _ in run_pe.sweep_points("L")], expected)
+        cfg = run_pe.build_system_config(run_pe.build_args())
+        points = experiment_points(cfg, parse_args(["--sweep", "L"]))
+        self.assertEqual([point_cfg.pilot_len for _, _, point_cfg in points], expected)
+        for stage in ("train-evaluate", "evaluate", "plot"):
+            args = run_pe.parse_args(["--stage", stage], ("GI-HT", "HT"), "train-evaluate", fixed_sweep="L")
+            self.assertEqual([value for value, _ in run_pe.sweep_points("L", args.values)], expected)
+        self.assertEqual(run_pe.SWEEPS["N"][1], [50, 100, 150, 200, 250])
+        self.assertEqual(run_pe.SWEEPS["SNR"][1], [10, 12, 14, 16, 18, 20])
+        self.assertEqual(cfg.pilot_len, 10)
+
+    def test_loss_l_svg_axis_matches_shorter_default_range(self) -> None:
+        from network.run_varying_l import write_loss_vs_l_svg
+
+        rows = {"addcorr": [{"pilot_len": 4, "loss": 0.2}, {"pilot_len": 14, "loss": 0.1}]}
+        with TemporaryDirectory() as temporary:
+            path = Path(temporary) / "loss.svg"
+            write_loss_vs_l_svg(path, rows)
+            root = ElementTree.parse(path).getroot()
+            namespace = {"svg": "http://www.w3.org/2000/svg"}
+            ticks = [node.text for node in root.findall("svg:text", namespace) if node.get("y") == "504"]
+            self.assertEqual(ticks, ["4", "6", "8", "10", "12", "14"])
+            circles = root.findall("svg:circle", namespace)
+            self.assertEqual([float(node.get("cx")) for node in circles], [90.0, 865.0])
 
     def test_training_scene_changes_only_the_swept_field_and_geometry_flags(self) -> None:
         cli = run_pe.parse_args([], ("GI-HT", "HT"), "train-evaluate")
@@ -167,6 +223,20 @@ class PeExperimentTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 check_compatible([first, {**second, **changes}], "pilot_len")
 
+    def test_same_scene_merge_relaxes_only_observation_hash_check(self) -> None:
+        cfg = asdict(run_pe.build_system_config(run_pe.build_args()))
+        first = {"metric": METRIC, "value": 10, "system_config": cfg, "mc_times": 1000,
+                 "evaluation_seed": 42, "decision_rule": "score > threshold", "threshold_range": [0, 1],
+                 "dataset_sha256": "local", "method": "GI-HT", "inference_batch_size": 128,
+                 "checkpoint_epoch": 100}
+        second = {**first, "method": "HT", "dataset_sha256": "server"}
+        check_compatible([first, second], "pilot_len", allow_different_observations=True)
+        for changes in ({"mc_times": 999}, {"evaluation_seed": 43}, {"decision_rule": "score >= threshold"},
+                        {"threshold_range": [-1, 1]}, {"inference_batch_size": 4}, {"checkpoint_epoch": 99},
+                        {"metric": "PM+PF/2"}, {"system_config": {**cfg, "event_trigger_prob": 0.5}}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                check_compatible([first, {**second, **changes}], "pilot_len", allow_different_observations=True)
+
     def test_method_artifacts_and_combined_plot_preserve_exact_optimum(self) -> None:
         cfg = asdict(run_pe.build_system_config(run_pe.build_args()))
         metadata = {"sweep": "L", "value": 10, "system_config": cfg, "mc_times": 2,
@@ -181,12 +251,61 @@ class PeExperimentTests(unittest.TestCase):
                 with np.load(out / "points/L10" / method / "exact_curve.npz") as data:
                     self.assertAlmostEqual(float(data["Pe"].min()), record["min_pe"])
                 for suffix in ("png", "svg", "pdf"):
-                    self.assertTrue((out / "points/L10" / method / f"pm_pf_curve.{suffix}").is_file())
+                    self.assertFalse((out / "points/L10" / method / f"pm_pf_curve.{suffix}").exists())
             rows = refresh_sweep(out, "L", "pilot_len", [(10, "L10")], "linear")
             self.assertEqual(len(rows), 2)
             self.assertEqual(len(json.loads((out / "summary_config.json").read_text())["completed"]), 2)
             self.assertIn("Box-NNLS", (out / "pe_vs_L.svg").read_text())
             self.assertTrue((out / "points/L10/pm_pf_comparison.svg").is_file())
+            configuration = json.loads((out / "summary_config.json").read_text())
+            self.assertFalse(configuration["allow_different_observations"])
+            self.assertTrue(configuration["observation_hashes_match"])
+            path = out / "points/L10/Box-NNLS/metrics.json"
+            changed_record = json.loads(path.read_text())
+            changed_record["dataset_sha256"] = "different"
+            path.write_text(json.dumps(changed_record), encoding="utf-8")
+            original_metrics = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "identical observations"):
+                refresh_sweep(out, "L", "pilot_len", [(10, "L10")], "linear")
+            merged = refresh_sweep(out, "L", "pilot_len", [(10, "L10")], "linear",
+                                   allow_different_observations=True)
+            self.assertEqual(path.read_bytes(), original_metrics)
+            self.assertEqual([r["min_pe"] for r in merged], [r["min_pe"] for r in rows])
+            configuration = json.loads((out / "summary_config.json").read_text())
+            self.assertTrue(configuration["allow_different_observations"])
+            self.assertFalse(configuration["observation_hashes_match"])
+            self.assertEqual(configuration["observation_hashes"]["L10"],
+                             {"Covariance": "same", "Box-NNLS": "different"})
+
+    def test_saving_each_method_keeps_data_without_calling_plotter(self) -> None:
+        scores, labels = np.array([[0.6, 0.4]]), np.array([[1, 0]])
+        with TemporaryDirectory() as temporary, patch("experiments.pe_metrics.plot_comparison") as plot:
+            for method in METHODS:
+                directory = Path(temporary) / method
+                record = save_method_result(directory, method, scores, labels, {"mc_times": 1}, [{"trial": 1}])
+                self.assertEqual(record["min_pe"], 0)
+                self.assertEqual({p.name for p in directory.iterdir()},
+                                 {"scores.npz", "exact_curve.npz", "pm_pf_curve.csv", "trials.csv", "metrics.json"})
+                with np.load(directory / "scores.npz") as data:
+                    np.testing.assert_array_equal(data["scores"], scores)
+                    np.testing.assert_array_equal(data["labels"], labels)
+            plot.assert_not_called()
+
+    def test_single_method_point_skips_comparison_but_keeps_sweep_summary(self) -> None:
+        cfg = asdict(run_pe.build_system_config(run_pe.build_args()))
+        metadata = {"sweep": "L", "value": 10, "system_config": cfg, "mc_times": 1,
+                    "evaluation_seed": 42, "dataset_sha256": "same", "checkpoint_epoch": None}
+        with TemporaryDirectory() as temporary, patch("experiments.pe_metrics.plot_comparison") as comparison, \
+                patch("experiments.pe_metrics.plot_pe") as summary:
+            out = Path(temporary)
+            save_method_result(out / "points/L10/Covariance", "Covariance",
+                               np.array([[0.6, 0.4]]), np.array([[1, 0]]), metadata, [{"trial": 1}])
+            rows = refresh_sweep(out, "L", "pilot_len", [(10, "L10")], "log")
+            self.assertEqual(len(rows), 1)
+            comparison.assert_not_called()
+            summary.assert_called_once_with(out, "L", rows, "log")
+            self.assertTrue((out / "pe_vs_L.csv").is_file())
+            self.assertTrue((out / "summary_config.json").is_file())
 
     def test_interrupted_rewrite_does_not_publish_stale_optimal_metrics(self) -> None:
         metadata = {"mc_times": 1}
@@ -195,7 +314,7 @@ class PeExperimentTests(unittest.TestCase):
             directory = Path(temporary)
             save_method_result(directory, "HT", scores, labels, metadata, [{"trial": 1}])
             self.assertTrue((directory / "metrics.json").is_file())
-            with patch("experiments.pe_metrics.plot_comparison", side_effect=RuntimeError("interrupted plot")):
+            with patch("experiments.pe_metrics.write_json", side_effect=RuntimeError("interrupted save")):
                 with self.assertRaisesRegex(RuntimeError, "interrupted"):
                     save_method_result(directory, "HT", scores, labels, metadata, [{"trial": 1}])
             self.assertFalse((directory / "metrics.json").exists())

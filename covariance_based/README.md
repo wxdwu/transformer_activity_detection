@@ -81,7 +81,7 @@ python covariance_based/run_monte_carlo.py --sweep N
 python covariance_based/run_monte_carlo.py --sweep SNR
 ```
 
-Defaults: `L=[4,6,...,30]`, `N=[50,100,150,200,250]`, and
+Defaults: `L=[4,6,...,14]`, `N=[50,100,150,200,250]`, and
 `SNR=[10,12,14,16,18,20]`. Only the swept field changes; other parameters keep
 their selected values. SNR sweeps require SNR-dependent noise, not thermal noise.
 
@@ -823,7 +823,7 @@ CUDA_VISIBLE_DEVICES=5 python network/run_loss_vs_epoch.py --device cuda --epoch
 ## Minimum PM+PF Sweep Experiments (261015)
 
 `python covariance_based/run_pe_experiments.py` runs covariance MLE and
-Box-NNLS on L=4,6,...,30, N=50,100,...,250 and SNR=10,12,...,20 dB, matching the
+Box-NNLS on L=4,6,...,14, N=50,100,...,250 and SNR=10,12,...,20 dB, matching the
 Transformer experiment lists. The other parameters use the final sigma100,
 lambda1, peak-trigger0.9 event scene. Default MC count is 1000 per point.
 
@@ -831,8 +831,10 @@ One threshold per method/point minimizes PM+PF over the entire MC set using
 all distinct score breakpoints, including endpoints. This is an offline
 empirical minimum, without averaging per-realization minima or dividing by 2.
 `metrics.json` saves the threshold, both conditional rates and counts.
-The complete exact curve and raw scores are saved in NPZ files; per-point
-PM-PF and summary Pe figures are saved as PNG/SVG/PDF.
+The complete exact curve and raw scores are saved in NPZ files. Per-method point
+directories save data only, without individual figures. Combined per-point
+PM-PF figures (at least two available methods) and summary Pe figures are saved
+as PNG/SVG/PDF. Historical individual figures are not deleted automatically.
 
 The shared implementation is in experiments/. Neural training/evaluation is
 provided by network/run_pe_experiments.py. New outputs are classified under

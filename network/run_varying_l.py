@@ -16,7 +16,7 @@ from experiments.paths import RESULT_ROOT
 
 def parse_pilot_lens(raw: str | None) -> list[int]:
     if raw is None or raw.strip() == "":
-        return list(range(4, 31, 2))
+        return list(range(4, 15, 2))
     return [int(x.strip()) for x in raw.split(",") if x.strip()]
 
 
@@ -81,8 +81,8 @@ def plot_loss_vs_l(
     plt.xlabel("Pilot length L")
     plt.ylabel("loss")
     plt.title("Final Training Loss vs Pilot Length")
-    plt.xlim(4, 30)
-    plt.xticks(list(range(4, 31, 2)))
+    plt.xlim(4, 14)
+    plt.xticks(list(range(4, 15, 2)))
     plt.grid(True, linestyle="--", alpha=0.45)
     plt.legend()
     plt.tight_layout()
@@ -99,7 +99,7 @@ def write_loss_vs_l_svg(
     left, right, top, bottom = 90, 35, 45, 80
     plot_w = width - left - right
     plot_h = height - top - bottom
-    x_min, x_max = 4, 30
+    x_min, x_max = 4, 14
     all_ys = [
         float(row["loss"])
         for rows in results_by_mode.values()
@@ -123,7 +123,7 @@ def write_loss_vs_l_svg(
     def sy(y: float) -> float:
         return top + (y_max - y) / (y_max - y_min) * plot_h
 
-    x_ticks = list(range(4, 31, 2))
+    x_ticks = list(range(4, 15, 2))
     y_ticks = [y_min + i * (y_max - y_min) / 5.0 for i in range(6)]
     colors = {"addcorr": "#1f77b4", "noaddcorr": "#d62728"}
 
@@ -170,7 +170,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train one model per pilot length L and plot final epoch loss vs L."
     )
-    parser.add_argument("--pilot-lens", type=str, default="", help="Comma-separated L list. Default: 4,6,...,30.")
+    parser.add_argument("--pilot-lens", type=str, default="", help="Comma-separated L list. Default: 4,6,...,14.")
     parser.add_argument(
         "--out-dir",
         type=Path,

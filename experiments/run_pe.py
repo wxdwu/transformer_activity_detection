@@ -45,6 +45,8 @@ def parse_args(argv: list[str] | None, default_methods: tuple[str, ...], default
     parser.add_argument("--values", nargs="+", type=float, help="Custom values, allowed with a single sweep.")
     parser.add_argument("--methods", nargs="+", choices=METHODS, default=list(default_methods))
     parser.add_argument("--stage", choices=["train-evaluate", "evaluate", "plot"], default=default_stage)
+    parser.add_argument("--allow-different-observations", action="store_true",
+                        help="Plot same-scene results without requiring identical observation hashes; plot stage only.")
     parser.add_argument("--out-root", type=Path, default=RESULT_ROOT)
     parser.add_argument("--checkpoint-root", type=Path, help="Alternate result root containing trained checkpoints; evaluate stage only.")
     parser.add_argument("--mc-times", type=int, default=MC_TIMES)
@@ -69,6 +71,8 @@ def parse_args(argv: list[str] | None, default_methods: tuple[str, ...], default
         parser.error("Custom values require exactly one sweep.")
     if args.checkpoint_root is not None and args.stage != "evaluate":
         parser.error("checkpoint-root requires --stage evaluate.")
+    if args.allow_different_observations and args.stage != "plot":
+        parser.error("--allow-different-observations requires --stage plot.")
     for name in ("mc_times", "epochs", "steps_per_epoch", "batch_size", "eval_batches",
                  "inference_batch_size", "max_sweeps", "nnls_max_iter"):
         value = getattr(args, name)
@@ -182,7 +186,8 @@ def main(argv: list[str] | None = None, *, default_methods: tuple[str, ...] = ("
         points = sweep_points(sweep, cli.values)
         directory = cli.out_root / f"pe_vs_{sweep}"
         if cli.stage == "plot":
-            refresh_sweep(directory, sweep, field, points, cli.pe_scale)
+            refresh_sweep(directory, sweep, field, points, cli.pe_scale,
+                          allow_different_observations=cli.allow_different_observations)
             continue
         if sweep == "SNR" and base.noise_mode == "thermal":
             raise ValueError("SNR experiments require SNR-dependent noise.")

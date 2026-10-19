@@ -75,12 +75,12 @@ python network/run_loss_vs_epoch.py --device cuda --epochs 1 --steps-per-epoch 2
 Sweep runners also train both modes and inherit the same event settings:
 
 ```bash
-python network/run_varying_l.py --device cuda --pilot-lens 4,6,8,10,12,14,16
+python network/run_varying_l.py --device cuda --pilot-lens 4,6,8,10,12,14
 python network/run_varing_SNR.py --device cuda
 python network/run_varing_number_of_users.py --device cuda
 ```
 
-The L runner defaults to 4,6,...,30 unless the list is supplied. SNR sweeps
+The L runner defaults to 4,6,...,14 unless the list is supplied. SNR sweeps
 10,12,...,20 and N sweeps 50,100,...,250; only the swept physical field changes.
 Use separate GPUs and nohup log files for concurrent experiments. Do not run
 two jobs with the same output root. The default AMP dtype is BF16; check GPU
@@ -108,8 +108,10 @@ dependency from requirements.txt before using this option.
 
 The new metric is `Pe = min_threshold(PM + PF)` at each parameter point. Both
 traditional methods and both neural methods use the same sweep lists and final
-event scene. Every point saves its PM-PF curves, exact optimum and raw scores;
-summary plots combine all compatible available methods.
+event scene. Every point saves its PM-PF curve data, exact optimum and raw scores;
+per-method point directories do not generate figures. Combined per-point PM-PF
+figures are generated when at least two methods are available, and summary plots
+combine all compatible available methods.
 
 ```bash
 python covariance_based/run_pe_experiments.py

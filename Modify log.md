@@ -362,3 +362,63 @@ experiments/run_pe.py # parse_args/main增加可选fixed_sweep，限制独立入
 experiments/test_pe_experiments.py # 新增扫描隔离/默认方法和epoch检查；67项测试、全源码编译和diff通过
 README.md、result_261015/README.md、CALL_CHAIN.md # 同步三个独立入口及GPU5/6/7并行启动示例，CALL_CHAIN仅追加16.29
 验证 # 三个独立CLI在CPU上同时执行临时结果的只绘图模式，分别覆盖L4/16、N50/250、SNR10/20，均成功；未正式训练/扫描，未验证服务器GPU并行，未提交或推送
+
+261015:
+37、按用户要求移除刚新增的临时服务器短测改动：
+删除 # 独立短测脚本及配套测试、对应编译缓存和本次临时输出均清理，不保留可执行短测代码
+文档 # 撤销两个README新增的短测说明，CALL_CHAIN和本日志仅记录删除
+保留 # 正式Pe/并行入口/loss-vs-epoch代码、场景和已有实验结果不变；短测代码未提交或推送
+
+261019:
+38、合并下载的服务器结果并核对四方法数据兼容性：
+result_261015_2/ -> result_261015/ # 仅复制缺失文件，跳过.DS_Store；源目录完整保留，目标已有文件不覆盖，未删除结果
+合并内容 # GI-HT/HT的逐点结果、三类扫描权重及loss_vs_epoch；服务器已完成L4至22共10点、N共5点、SNR共6点，最终L绘图范围仍为4至20
+文件验证 # 原目标492个文件SHA-256均未变，480个无冲突源文件与目标一致；78个冲突仅为汇总/逐点合并图及配置，保留目标版本，服务器版本仍在源目录
+兼容性 # 场景/MC1000/种子42/指标相同；传统方法内部与两网络内部通过，所有重合点的跨环境dataset_sha256不同，保留校验，不强行生成四方法图
+标签核验 # L/N/SNR的200万/75万/120万个设备标签完全一致，但标签不代表原始导频/接收信号/噪声/G一致；记录双方PyTorch/NumPy版本不同，未据此直接认定哈希差异原因
+result_261015/MERGE_REPORT_261019.md、CALL_CHAIN.md # 记录文件合并状态、既有汇总仍为传统方法图及后续同机四方法统一评估命令，CALL_CHAIN仅追加16.31
+后续 # 使用已下载epoch100权重，L限定4至20、N/SNR完整，在新shared_evaluation目录统一评估即可，无需重新训练；本次未执行正式评估、未改算法/loss/场景/校验、未提交或推送
+
+261019:
+39、按用户要求直接合并同场景下不同测试观测的已有曲线：
+experiments/run_pe.py # 新增--allow-different-observations，仅限--stage plot，通过CLI显式传递，训练/评估阶段拒绝该开关
+experiments/pe_metrics.py # check_compatible/refresh_sweep增加可选策略，仅放宽观测哈希一致性；场景/次数/种子/指标/门限规则及两网络epoch/batch检查保留，默认行为不变
+汇总记录 # summary_config.json保存开关、实际哈希是否匹配及逐点/逐方法哈希；不改原metrics.json、原始分数、最优阈值或Pe，不将非配对观测宣称为相同样本
+experiments/test_pe_experiments.py # 新增开关仅限绘图、默认严格、只放宽哈希及CLI不触发训练/评估测试；扩展临时绘图验证，确认原指标未变并记录策略
+文档 # result_261015/README.md、MERGE_REPORT_261019.md和CALL_CHAIN.md同步直接合并命令，CALL_CHAIN仅追加16.32；统一重评估改为可选，不是本次合图前提
+运行范围 # 用户自行运行L4至20以及完整N/SNR的绘图指令；本次不运行正式绘图、不训练、不重新Monte Carlo，不改网络/loss/数据分布，未提交或推送
+验证 # 70项单元测试、修改源码编译通过；真实L9点/N5点/SNR6点共80份方法结果通过同场景新策略检查，四方法齐全，未触发正式绘图/训练/评估
+
+261019:
+40、取消Pe扫描中单算法单参数点的独立图片：
+experiments/pe_metrics.py # save_method_result移除单方法plot_comparison，L/N/SNR中四种方法统一仅保存分数/完整曲线NPZ、采样曲线/诊断CSV和metrics.json，不再生成方法目录下的pm_pf_curve.png/svg/pdf
+汇总绘图 # 保留Pe vs L/N/SNR图及各点多方法PM-PF图；仅一种可用方法时跳过该点比较图，仍保留Pe汇总与数据
+experiments/test_pe_experiments.py # 更新图片不存在断言，新增四方法数据文件完整且不调用绘图器、单方法点只做汇总测试；中断保存模拟改为指标JSON发布失败，保持旧完成标记失效验证
+文档 # 根README、covariance_based/README.md、result_261015/README.md同步新输出规则，CALL_CHAIN仅追加16.33
+保留 # 不改算法、训练loss、阈值/Pe计算、数据/权重、合并开关或独立单条件实验；不删除历史已有图片，不运行正式训练/测试/绘图，未提交或推送
+验证 # 72项单元测试及修改源码编译通过；临时目录确认单方法无图但数据完整、多方法PM-PF及Pe汇总继续生成
+
+261019:
+41、L扫描默认仅训练/测试/绘图4至14：
+network/run_varying_l.py # 默认导频列表改为[4,6,8,10,12,14]，loss图Matplotlib/SVG横轴和CLI帮助同步
+experiments/run_pe.py # 无需改动，SWEEPS自动继承新默认；独立run_pe_vs_L与通用Pe/传统Pe入口均默认仅处理6点
+covariance_based/run_monte_carlo.py # DEFAULT_SWEEPS的L列表同步为4至14，传统扫描与网络保持一致
+experiments/test_pe_experiments.py # 新增三阶段默认范围、传统/神经/旧loss列表一致、N/SNR和标称L10不变，以及备用SVG刻度/端点测试
+文档 # 根README、covariance_based/README.md、result_261015/README.md同步范围，CALL_CHAIN仅追加16.34；旧命令的显式--values/--pilot-lens仍会覆盖默认，需要移除或更新
+保留 # 已有L>14数据/权重不动，N/SNR扫描及标称L10、网络/loss/场景/优化不变；服务器需同步代码，本次不运行正式训练/测试/绘图，未提交或推送
+验证 # 74项单元测试及相关源码编译通过，默认6点和SVG横轴核对成功；未开展正式实验或重绘历史图
+
+261019:
+42、按用户要求删除result_261015已有单算法单参数点图片：
+清理范围 # 三类pe_vs_L/N/SNR的points/<点>/<GI-HT|HT|Covariance|Box-NNLS>/pm_pf_curve.png/svg/pdf，仅删除这类图片
+数量 # 共276个文件，L144/N60/SNR72；PNG/SVG/PDF各92个，目标范围剩余单方法图片为0
+保留验证 # 其余700个文件的路径及内容SHA-256删除前后完全一致，数据、权重、日志、多方法PM-PF及Pe汇总图均保留；未操作其他结果目录
+范围 # 只清理历史图片并更新记录，CALL_CHAIN仅追加16.35；不改代码/配置，不训练/测试/重绘，未提交或推送
+
+261019:
+43、按用户要求删除L从16开始的全部逐点结果及对应训练文件：
+清理范围 # result_261015/pe_vs_L/points内L16至L30的8个目录，以及checkpoints/addcorr、noaddcorr内L16至L24的10个目录；共18目录174文件
+删除内容 # 这些点的四方法测试数据、逐点图、模型权重及各点train.log，含未完整训练的L24文件
+保留验证 # 其他526个文件路径及内容SHA-256完全不变；L4/6/8/10/12/14、N/SNR、loss_vs_epoch和跨点控制台总日志保留，L>=16目录剩余0个
+汇总验证 # 当前L汇总CSV已仅含6点四方法共24行，summary_config也仅4至14，无需改写汇总图/数据；CALL_CHAIN仅追加16.36
+范围 # 不改算法或配置，不训练/测试/重绘，不清理其他实验目录，未提交或推送
