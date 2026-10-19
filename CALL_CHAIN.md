@@ -1772,3 +1772,41 @@ L24的未完整运行训练文件一并删除。L4/6/8/10/12/14及N/SNR、loss_v
 本地543个实验文件保留且继续忽略，不上传权重、图表、数据或日志，不改写历史提交。
 根README和协方差README改为链接CALL_CHAIN，避免指向远端已移除的实验目录说明。
 其他.DS_Store等无关修改不纳入提交，不运行训练、测试或重新绘图。
+
+### 16.39 新增天线数量M与事件影响尺度sigma的Pe扫描（261019）
+
+新增network/run_pe_vs_M.py和network/run_pe_vs_event_sigma.py两个独立训练入口，
+分别固定M和event_sigma_m轴，默认逐点训练GI-HT/HT各100epoch，再评估epoch100的last.pt。
+传统MLE/Box-NNLS复用covariance_based/run_pe_experiments.py，通过--sweeps选择同样两轴，
+每方法/点仍1000次MC，种子42；Pe仍为整组测试上精确阈值搜索得到的最小PM+PF，loss不改。
+
+covariance_based.run_monte_carlo.DEFAULT_SWEEPS新增M=[32,48,64,80,96,112,128]及
+event_sigma_m=[60,70,80,90,100,110,120]米；experiments.run_pe.SWEEPS继承这两组。
+通用Pe入口无--sweeps时现在依次包含L/N/SNR/M/event_sigma_m共五轴；原三个独立入口不变。
+sweep_points支持M正整数、sigma正实数和自定义列表，目录标签分别为M032和SIGMA60等。
+原单独MLE扫描入口也支持两轴，相关参数校验及横轴标签同步。
+
+M扫描仅改变num_antennas，保持N200/L10/SNR20/sigma100；sigma扫描仅改变event_sigma_m，
+保持M32及其他默认参数。lambda1、峰值触发0.9、背景0.005、最多3事件、半径500米不变。
+sigma为Gaussian响应尺度而非硬覆盖半径，默认correlation_length_m=0使G长度自动跟随sqrt(2)*sigma，
+活跃负载自然随sigma变化，不校准成固定0.1。训练和推理均使用covariance_rows，HT关闭三个几何模块。
+
+调用链：新独立入口/通用入口 -> experiments.run_pe.main -> training_args/prepare_models
+-> evaluate_shared_trials -> save_method_result/exact_min_pe -> refresh_sweep/plot_pe。
+输出为result_261015/pe_vs_M和pe_vs_event_sigma_m，包含checkpoints、points及Pe汇总CSV/PNG/SVG/PDF；
+每点仅保留多方法PM-PF合图，单方法目录只存数据。结果树继续整体忽略，不上传已有结果。
+
+```bash
+python covariance_based/run_pe_experiments.py --sweeps M event_sigma_m
+CUDA_VISIBLE_DEVICES=5 nohup python -u network/run_pe_vs_M.py --device cuda > result_261015/logs/neural_M.log 2>&1 &
+CUDA_VISIBLE_DEVICES=6 nohup python -u network/run_pe_vs_event_sigma.py --device cuda > result_261015/logs/neural_event_sigma_m.log 2>&1 &
+python covariance_based/run_pe_experiments.py --stage plot --sweeps M event_sigma_m --allow-different-observations
+```
+
+根README、协方差README和本地结果指南同步新范围/命令及默认五轴行为。
+验证：79项测试、源码编译通过；新增范围/标签/参数隔离、实际数据维度、sigma响应与G同步、
+四方法汇总绘图及独立入口测试。临时端到端覆盖M32/M128和sigma60/sigma120四点，
+完整base两网络共8次CPU短训练（各2epoch、每epoch1步、batch4、eval1），16个epoch均skip=0；
+各点四方法8次共享MC、严格权重重载、原始分数/指标/哈希及全部数据/图检查通过。
+两个真实独立CLI的只绘图模式通过，Pe图已视觉检查。短测仅在/private/tmp/giht_new_pe_261019.rrMLkp/，
+不代表正式性能；未启动正式100epoch训练/1000次扫描，未改已有实验数据，未验证CUDA/BF16，未提交或推送。

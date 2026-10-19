@@ -82,7 +82,9 @@ python covariance_based/run_monte_carlo.py --sweep SNR
 ```
 
 Defaults: `L=[4,6,...,14]`, `N=[50,100,150,200,250]`, and
-`SNR=[10,12,14,16,18,20]`. Only the swept field changes; other parameters keep
+`SNR=[10,12,14,16,18,20]`. Additional sweeps are
+`M=[32,48,64,80,96,112,128]` and `event_sigma_m=[60,70,...,120]` meters.
+Only the swept field changes; other parameters keep
 their selected values. SNR sweeps require SNR-dependent noise, not thermal noise.
 
 The default is now `USE_PAPER_EVENT_TEST_SETTINGS=False` and
@@ -823,9 +825,10 @@ CUDA_VISIBLE_DEVICES=5 python network/run_loss_vs_epoch.py --device cuda --epoch
 ## Minimum PM+PF Sweep Experiments (261015)
 
 `python covariance_based/run_pe_experiments.py` runs covariance MLE and
-Box-NNLS on L=4,6,...,14, N=50,100,...,250 and SNR=10,12,...,20 dB, matching the
-Transformer experiment lists. The other parameters use the final sigma100,
-lambda1, peak-trigger0.9 event scene. Default MC count is 1000 per point.
+Box-NNLS on L=4,6,...,14, N=50,100,...,250, SNR=10,12,...,20 dB,
+M=32,48,...,128 and event_sigma_m=60,70,...,120 m, matching the Transformer
+experiment lists. The unswept parameters use the final sigma100, lambda1,
+peak-trigger0.9 event scene. Default MC count is 1000 per point.
 
 One threshold per method/point minimizes PM+PF over the entire MC set using
 all distinct score breakpoints, including endpoints. This is an offline
@@ -838,8 +841,29 @@ as PNG/SVG/PDF. Historical individual figures are not deleted automatically.
 
 The shared implementation is in experiments/. Neural training/evaluation is
 provided by network/run_pe_experiments.py. New outputs are classified under
-result_261015/pe_vs_L, pe_vs_N and pe_vs_SNR. Existing single-point and loss
+result_261015/pe_vs_L, pe_vs_N, pe_vs_SNR, pe_vs_M and pe_vs_event_sigma_m.
+Existing single-point and loss
 runners also use result_261015 by default; earlier sections retain historical
 paths where they describe completed old experiments. The result tree is
 local-only and ignored by Git. See [the experiment call chain](../CALL_CHAIN.md)
 for commands and the directory structure.
+
+To run only the new antenna-count and event-scale experiments:
+
+```bash
+python covariance_based/run_pe_experiments.py --sweeps M event_sigma_m
+```
+
+For parallel traditional jobs use `--sweeps M` and `--sweeps event_sigma_m` in
+separate processes; their output directories are independent. For combined
+four-method figures after collecting the neural results:
+
+```bash
+python covariance_based/run_pe_experiments.py --stage plot --sweeps M event_sigma_m --allow-different-observations
+```
+
+Only M changes in the antenna experiment. Only the Gaussian response scale
+changes in the sigma experiment; lambda=1 and peak-trigger=0.9 remain fixed.
+The default geometry length follows sqrt(2)*sigma, and the activation load may
+change naturally with sigma. The Pe definition, solvers and training loss are
+unchanged. Single-method point figures remain disabled.

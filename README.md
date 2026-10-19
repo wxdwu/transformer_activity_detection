@@ -20,7 +20,9 @@ Scope of this version:
 - `network/losses.py`: weighted cross-entropy style loss (paper Eq. (4)).
 - `network/metrics.py`: `PM/PF` metrics and threshold curve.
 - `network/train.py`: training script.
-- `network/run_pe_experiments.py`: train GI-HT/HT and plot minimum PM+PF vs L/N/SNR.
+- `network/run_pe_experiments.py`: train GI-HT/HT and plot minimum PM+PF vs L/N/SNR/M/event scale.
+- `network/run_pe_vs_M.py`: dedicated antenna-count Pe sweep.
+- `network/run_pe_vs_event_sigma.py`: dedicated event-response-scale Pe sweep.
 - `covariance_based/run_pe_experiments.py`: matched MLE/Box-NNLS Monte Carlo Pe sweeps.
 - `experiments/`: shared threshold optimization, evaluation and result aggregation.
 - `covariance_based/nnls.py`: traditional box-constrained covariance NNLS, solved with SciPy BVLS.
@@ -121,7 +123,8 @@ python covariance_based/run_pe_experiments.py --stage plot
 
 The first command evaluates MLE and Box-NNLS; the second trains/evaluates
 GI-HT and HT at epoch 100; the third redraws the joint figures after results
-are collected. Default MC count is 1000 per point for every method. All new
+are collected. The general Pe runner now includes all five sweep axes; specify
+`--sweeps` to run only a subset. Default MC count is 1000 per point for every method. All new
 outputs are organized in `result_261015/`. The earlier loss-only runners now
 save under `result_261015/loss_sweeps/`; their loss metric is unchanged.
 The result tree is local-only and ignored by Git. See
@@ -130,9 +133,52 @@ output organization and the offline threshold-selection convention.
 
 For parallel neural sweeps on separate GPUs, use the dedicated entry points
 `network/run_pe_vs_L.py`, `network/run_pe_vs_N.py` and
-`network/run_pe_vs_SNR.py`. Each trains/evaluates both GI-HT and HT for its
-selected sweep and writes to a separate pe_vs_* directory. See the experiment
-guide for three concurrent nohup commands and separate log files.
+`network/run_pe_vs_SNR.py`, or the two new entry points below. Each trains/evaluates
+both GI-HT and HT for its selected sweep and writes to a separate pe_vs_* directory.
+
+## Antenna and Event-Scale Pe Sweeps
+
+- M: 32, 48, 64, 80, 96, 112, 128 antennas.
+- event_sigma_m: 60, 70, 80, 90, 100, 110, 120 meters.
+
+Only the swept parameter changes. Both use N=200, L=10, measured SNR=20 dB,
+event lambda=1, peak trigger=0.9, background=0.005, at most 3 events and
+covariance_rows. The M sweep keeps sigma=100 m; the sigma sweep keeps M=32.
+Sigma is the Gaussian event-response scale, not a hard coverage radius.
+With the default correlation_length_m=0, the geometry affinity length also
+updates to sqrt(2)*sigma. Increasing sigma can increase activation load;
+the generator does not hold the activity ratio fixed.
+
+Traditional MLE and Box-NNLS, without training:
+
+```bash
+python covariance_based/run_pe_experiments.py --sweeps M event_sigma_m
+```
+
+Server GI-HT/HT: each point trains both models for 100 epochs, then evaluates
+their epoch-100 last.pt weights on 1000 MC trials. The two processes can run
+concurrently on separate GPUs; points and models within each process are serial.
+
+```bash
+mkdir -p result_261015/logs
+CUDA_VISIBLE_DEVICES=5 nohup python -u network/run_pe_vs_M.py --device cuda > result_261015/logs/neural_M.log 2>&1 &
+CUDA_VISIBLE_DEVICES=6 nohup python -u network/run_pe_vs_event_sigma.py --device cuda > result_261015/logs/neural_event_sigma_m.log 2>&1 &
+```
+
+After collecting each method's results, redraw the two combined figures without
+training or MC evaluation:
+
+```bash
+python covariance_based/run_pe_experiments.py --stage plot --sweeps M event_sigma_m --allow-different-observations
+```
+
+Outputs are `result_261015/pe_vs_M/pe_vs_M.png/svg/pdf` and
+`result_261015/pe_vs_event_sigma_m/pe_vs_event_sigma_m.png/svg/pdf`, plus summary
+CSVs. Each point (e.g. points/M032 or points/SIGMA60) retains its data and
+multi-method PM-PF figure; per-method point directories do not generate figures.
+Do not run overlapping writers on the same sweep/output tree. Keep local
+traditional and server neural method subdirectories when merging, then redraw.
+The entire result tree remains local-only and ignored by Git.
 
 Evaluate PM/PF curve:
 

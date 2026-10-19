@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import io
+import runpy
 from contextlib import redirect_stderr
 from dataclasses import asdict
 from pathlib import Path
@@ -16,6 +17,7 @@ import torch
 
 from experiments import run_pe
 from experiments.pe_metrics import METHODS, METRIC, check_compatible, exact_min_pe, refresh_sweep, save_method_result
+from network.data import ActivityDataGenerator
 from network.run_pm_pf_comparison import evaluate_shared_trials
 
 
@@ -132,6 +134,69 @@ class PeExperimentTests(unittest.TestCase):
         self.assertEqual(run_pe.SWEEPS["SNR"][1], [10, 12, 14, 16, 18, 20])
         self.assertEqual(cfg.pilot_len, 10)
 
+    def test_antenna_and_event_scale_sweeps_have_matching_defaults_and_labels(self) -> None:
+        from covariance_based.run_monte_carlo import experiment_points, parse_args
+
+        expected = {"M": [32, 48, 64, 80, 96, 112, 128],
+                    "event_sigma_m": [60, 70, 80, 90, 100, 110, 120]}
+        base = run_pe.build_system_config(run_pe.build_args())
+        for sweep, values in expected.items():
+            self.assertEqual(run_pe.SWEEPS[sweep][1], values)
+            self.assertEqual([value for value, _ in run_pe.sweep_points(sweep)], values)
+            points = experiment_points(base, parse_args(["--sweep", sweep]))
+            self.assertEqual([getattr(cfg, run_pe.SWEEPS[sweep][0]) for _, _, cfg in points], values)
+        self.assertEqual(run_pe.sweep_points("M", [128, 32]), [(32, "M032"), (128, "M128")])
+        self.assertEqual(run_pe.sweep_points("event_sigma_m", [120, 60.5]),
+                         [(60.5, "SIGMA60p5"), (120.0, "SIGMA120")])
+        fractional = experiment_points(base, parse_args(["--sweep", "event_sigma_m", "--values", "60.5"]))
+        self.assertEqual(fractional[0][2].event_sigma_m, 60.5)
+        for sweep, values in (("M", [32.5]), ("M", [0]), ("event_sigma_m", [0]),
+                              ("event_sigma_m", [-1]), ("event_sigma_m", [float("inf")]),
+                              ("event_sigma_m", [60, 60])):
+            with self.subTest(sweep=sweep, values=values), self.assertRaises(ValueError):
+                run_pe.sweep_points(sweep, values)
+        for sweep, values in (("M", [32.5]), ("event_sigma_m", [0])):
+            with self.assertRaises(ValueError):
+                experiment_points(base, parse_args(["--sweep", sweep, "--values", str(values[0])]))
+
+    def test_new_neural_entry_points_select_only_their_own_sweep(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for script, sweep in (("run_pe_vs_M.py", "M"), ("run_pe_vs_event_sigma.py", "event_sigma_m")):
+            with self.subTest(script=script), patch.object(run_pe, "main") as main:
+                runpy.run_path(str(root / "network" / script), run_name="__main__")
+                main.assert_called_once_with(default_methods=("GI-HT", "HT"), default_stage="train-evaluate",
+                                             fixed_sweep=sweep)
+
+    def test_antenna_sweep_changes_raw_shapes_without_changing_geometry(self) -> None:
+        torch.set_num_threads(1)
+        base = run_pe.build_system_config(run_pe.build_args())
+        batches = []
+        for antennas in (32, 128):
+            torch.manual_seed(42)
+            cfg = run_pe.replace(base, num_antennas=antennas)
+            batch = ActivityDataGenerator(cfg, torch.device("cpu")).sample_batch(4, return_raw=True)
+            self.assertEqual(batch["y"].shape, (4, base.pilot_len, antennas))
+            self.assertEqual(batch["h"].shape, (4, base.num_devices, antennas))
+            self.assertEqual(batch["x_y"].shape, (4, 2 * base.pilot_len**2))
+            self.assertTrue(torch.isfinite(batch["y"]).all())
+            batches.append(batch)
+        for name in ("positions", "b", "corr_matrix", "activity_prob_map", "label"):
+            torch.testing.assert_close(batches[0][name], batches[1][name], rtol=0, atol=0)
+
+    def test_event_scale_sweep_updates_triggering_and_geometry_together(self) -> None:
+        torch.set_num_threads(1)
+        base = run_pe.build_system_config(run_pe.build_args())
+        batches = []
+        for sigma in (60.0, 120.0):
+            torch.manual_seed(42)
+            cfg = run_pe.replace(base, event_sigma_m=sigma)
+            batches.append(ActivityDataGenerator(cfg, torch.device("cpu")).sample_batch(4, return_raw=True))
+        for name in ("positions", "b", "event_centers"):
+            torch.testing.assert_close(batches[0][name], batches[1][name], rtol=0, atol=0)
+        for name in ("corr_matrix", "activity_prob_map"):
+            self.assertTrue(torch.all(batches[0][name] <= batches[1][name]))
+            self.assertTrue(torch.any(batches[0][name] < batches[1][name]))
+
     def test_loss_l_svg_axis_matches_shorter_default_range(self) -> None:
         from network.run_varying_l import write_loss_vs_l_svg
 
@@ -149,7 +214,7 @@ class PeExperimentTests(unittest.TestCase):
     def test_training_scene_changes_only_the_swept_field_and_geometry_flags(self) -> None:
         cli = run_pe.parse_args([], ("GI-HT", "HT"), "train-evaluate")
         original = run_pe.build_system_config(run_pe.build_args())
-        for sweep, value in (("L", 16), ("N", 250), ("SNR", 12.0)):
+        for sweep, value in (("L", 16), ("N", 250), ("SNR", 12.0), ("M", 128), ("event_sigma_m", 60.0)):
             for method in ("GI-HT", "HT"):
                 args = run_pe.training_args(cli, sweep, value, Path("/tmp/pe_args"), method)
                 expected = {**asdict(original), run_pe.SWEEPS[sweep][0]: value}
@@ -157,6 +222,41 @@ class PeExperimentTests(unittest.TestCase):
                 cfg = run_pe.build_model_config(args)
                 self.assertEqual(cfg["signal_token_mode"], "covariance_rows")
                 self.assertTrue(all(cfg[name] == (method == "GI-HT") for name in run_pe.GEOMETRY_FLAGS))
+
+    def test_new_sweeps_save_four_method_summaries_and_combined_point_figures(self) -> None:
+        base = run_pe.build_system_config(run_pe.build_args())
+        labels = np.zeros((2, base.num_devices), dtype=np.uint8)
+        labels[:, 0] = 1
+        scores = np.full(labels.shape, 0.1)
+        scores[:, 0] = 0.9
+        scores[0, 1] = 0.95
+        trials = [{"trial": 1}, {"trial": 2}]
+        with TemporaryDirectory() as temporary:
+            for sweep, values, xlabel in (("M", [32, 128], "Number of antennas M"),
+                                           ("event_sigma_m", [60, 120], "Event influence scale")):
+                field = run_pe.SWEEPS[sweep][0]
+                points = run_pe.sweep_points(sweep, values)
+                out = Path(temporary) / f"pe_vs_{sweep}"
+                for value, label in points:
+                    cfg = run_pe.replace(base, **{field: value})
+                    for method in METHODS:
+                        neural = method in ("GI-HT", "HT")
+                        metadata = {"sweep": sweep, "value": value, "system_config": asdict(cfg), "mc_times": 2,
+                                    "evaluation_seed": 42, "dataset_sha256": f"same-{label}",
+                                    "checkpoint_epoch": 100 if neural else None,
+                                    "inference_batch_size": 128 if neural else None}
+                        save_method_result(out / "points" / label / method, method, scores, labels, metadata, trials)
+                rows = refresh_sweep(out, sweep, field, points, "log")
+                self.assertEqual(len(rows), 8)
+                configuration = json.loads((out / "summary_config.json").read_text())
+                self.assertEqual(configuration["requested_values"], values)
+                for suffix in ("png", "svg", "pdf"):
+                    self.assertTrue((out / f"pe_vs_{sweep}.{suffix}").is_file())
+                    for _, label in points:
+                        self.assertTrue((out / "points" / label / f"pm_pf_comparison.{suffix}").is_file())
+                        for method in METHODS:
+                            self.assertFalse((out / "points" / label / method / f"pm_pf_curve.{suffix}").exists())
+                self.assertIn(xlabel, (out / f"pe_vs_{sweep}.svg").read_text())
 
     def test_method_subsets_preserve_identical_observations_and_all_scores(self) -> None:
         class Detector(torch.nn.Module):

@@ -106,7 +106,9 @@ def plot_pe(out: Path, sweep: str, records: list[dict], scale: str) -> None:
 
     colors = {"GI-HT": "#0072B2", "HT": "#D55E00", "Covariance": "#009E73", "Box-NNLS": "#CC79A7"}
     styles = {"GI-HT": "o-", "HT": "s--", "Covariance": "^-.", "Box-NNLS": "D:"}
-    labels = {"L": "Pilot length L", "N": "Number of devices N", "SNR": "SNR (dB)"}
+    labels = {"L": "Pilot length L", "N": "Number of devices N", "SNR": "SNR (dB)",
+              "M": "Number of antennas M",
+              "event_sigma_m": r"Event influence scale $\sigma_{\mathrm{event}}$ (m)"}
     fig, ax = plt.subplots(figsize=(6.4, 4.8))
     for method in METHODS:
         rows = sorted((r for r in records if r["method"] == method), key=lambda r: r["value"])

@@ -435,3 +435,15 @@ Git索引 # 对此前已跟踪的result_261015/.DS_Store、README.md、logs/.git
 Git提交 # 提交目录整体忽略规则和三个旧元信息文件的取消跟踪，推送wxdwu/main3_261013；只删除远端当前分支目录，不改写历史、不上传实际实验文件
 README.md、covariance_based/README.md # 实验说明链接改到CALL_CHAIN，注明结果目录仅保留本地，避免远端失效链接
 本地保护 # 543个实验文件保留且继续忽略；其他.DS_Store等无关修改不提交，不运行训练/测试/绘图；CALL_CHAIN仅追加16.38
+
+261019:
+46、新增Pe随天线数量M及事件影响尺度event_sigma_m变化的实验：
+network/run_pe_vs_M.py、network/run_pe_vs_event_sigma.py # 两个独立神经实验入口，各点训练GI-HT/HT各100epoch再评估last.pt，可在不同GPU并行，组内模型和参数点串行
+covariance_based/run_monte_carlo.py # 新增M32至128间隔16、sigma60至120米间隔10的默认扫描及参数/横轴支持；传统Pe入口复用共享流程
+experiments/run_pe.py # SWEEPS继承两组新范围，增加M整数/sigma正实数校验与M032/SIGMA60标签；通用默认包含五轴，已有L/N/SNR独立入口不变
+experiments/pe_metrics.py # 新增两类Pe横轴标签和单位，精确阈值、Pe定义及单方法不绘图策略保持
+场景 # M扫描仅变天线数；sigma扫描仅变Gaussian响应尺度，G默认长度自动跟随sqrt(2)*sigma，负载自然变化；保持N200/L10/SNR20/lambda1/触发0.9/背景0.005/最多3事件/R500，训练loss/网络/求解器不改
+输出 # result_261015/pe_vs_M及pe_vs_event_sigma_m，保存模型、逐点数据、多方法PM-PF及Pe汇总；整个结果树继续忽略，不修改/上传已有实验
+文档 # 根README、covariance_based/README.md和本地结果README同步；CALL_CHAIN仅追加16.39，提供传统、服务器并行和收集后只绘图指令
+验证 # 79项测试及源码编译通过；临时M32/M128/sigma60/sigma120四点各跑两网络完整base、2epoch×1步/batch4/eval1，16个epoch均skip=0；四方法各点MC8、权重严格重载、同点观测哈希及数据/指标/图片检查通过
+CLI与图 # 两个独立CLI只绘图模式通过，Pe图视觉检查通过，单方法目录无图；短测仅在/private/tmp/giht_new_pe_261019.rrMLkp/，不代表正式性能，未正式训练/扫描，未验证CUDA/BF16，未提交或推送

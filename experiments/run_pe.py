@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 from covariance_based.nnls import NNLS_MAX_ITER, NNLS_TOLERANCE
-from covariance_based.run_monte_carlo import MAX_SWEEPS, MC_TIMES, TOLERANCE, validate_system
+from covariance_based.run_monte_carlo import DEFAULT_SWEEPS, MAX_SWEEPS, MC_TIMES, TOLERANCE, validate_system
 from experiments.paths import RESULT_ROOT
 from experiments.pe_metrics import METHODS, refresh_sweep, save_method_result
 from network.run_pm_pf_comparison import (
@@ -31,7 +31,9 @@ from network.train import build_args, build_model_config, build_system_config, r
 
 SWEEPS = {"L": ("pilot_len", parse_pilot_lens("")),
           "N": ("num_devices", parse_num_users("")),
-          "SNR": ("snr_db", parse_snr_values(""))}
+          "SNR": ("snr_db", parse_snr_values("")),
+          "M": DEFAULT_SWEEPS["M"],
+          "event_sigma_m": DEFAULT_SWEEPS["event_sigma_m"]}
 MODE_NAMES = {"GI-HT": "addcorr", "HT": "noaddcorr"}
 
 
@@ -92,13 +94,19 @@ def sweep_points(sweep: str, values: list[float] | None = None) -> list[tuple[fl
     chosen = SWEEPS[sweep][1] if values is None else values
     if len(set(chosen)) != len(chosen) or any(not math.isfinite(v) for v in chosen):
         raise ValueError("Sweep values must be distinct and finite.")
-    if sweep != "SNR" and any(v < 1 or int(v) != v for v in chosen):
-        raise ValueError("L and N must be positive integers.")
+    if sweep in {"L", "N", "M"} and any(v < 1 or int(v) != v for v in chosen):
+        raise ValueError("L, N and M must be positive integers.")
+    if sweep == "event_sigma_m" and any(v <= 0 for v in chosen):
+        raise ValueError("Event influence scales must be positive.")
     points = []
     for raw in sorted(chosen):
-        value = float(raw) if sweep == "SNR" else int(raw)
-        label = (f"L{value:02d}" if sweep == "L" else f"N{value:03d}" if sweep == "N"
-                 else "SNR" + format_snr_value(value))
+        if sweep in {"L", "N", "M"}:
+            value = int(raw)
+            width = 2 if sweep == "L" else 3
+            label = f"{sweep}{value:0{width}d}"
+        else:
+            value = float(raw)
+            label = ("SNR" if sweep == "SNR" else "SIGMA") + format_snr_value(value)
         points.append((value, label))
     return points
 

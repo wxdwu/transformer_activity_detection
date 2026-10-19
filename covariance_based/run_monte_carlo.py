@@ -52,6 +52,8 @@ DEFAULT_SWEEPS = {
     "L": ("pilot_len", list(range(4, 15, 2))),
     "N": ("num_devices", list(range(50, 251, 50))),
     "SNR": ("snr_db", list(range(10, 21, 2))),
+    "M": ("num_antennas", list(range(32, 129, 16))),
+    "event_sigma_m": ("event_sigma_m", list(range(60, 121, 10))),
 }
 POINT_FIELDS = ["method", "sweep", "sweep_value", "N", "M", "L", "snr_db", "activity_mode", "noise_mode"]
 TRIAL_FIELDS = POINT_FIELDS + [
@@ -102,7 +104,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ):
         parser.error("receiver-noise-variance must be finite and positive.")
     if args.values is not None and args.sweep == "none":
-        parser.error("values requires --sweep L, N, or SNR.")
+        parser.error("values requires a parameter sweep.")
     return args
 
 
@@ -132,10 +134,12 @@ def experiment_points(cfg: SystemConfig, args: argparse.Namespace) -> list[tuple
     for value in values:
         if not math.isfinite(value):
             raise ValueError("Sweep values must be finite.")
-        if name != "snr_db":
+        if name in {"pilot_len", "num_devices", "num_antennas"}:
             if value < 1 or int(value) != value:
-                raise ValueError("L and N sweep values must be positive integers.")
+                raise ValueError("L, N and M sweep values must be positive integers.")
             value = int(value)
+        elif name == "event_sigma_m" and value <= 0:
+            raise ValueError("Event influence scales must be positive.")
         points.append((args.sweep, value, replace(cfg, **{name: value})))
     if len({p[1] for p in points}) != len(points):
         raise ValueError("Sweep values must not contain duplicates.")
@@ -344,7 +348,9 @@ def plot_results(out_dir: Path, summaries: list[dict], curves: list[list[dict]],
         fig.savefig(out_dir / f"pm_pf_curve.{suffix}", dpi=300)
     plt.close(fig)
     if sweep != "none":
-        labels = {"L": "Pilot length L", "N": "Number of devices N", "SNR": "SNR (dB)"}
+        labels = {"L": "Pilot length L", "N": "Number of devices N", "SNR": "SNR (dB)",
+                  "M": "Number of antennas M",
+                  "event_sigma_m": r"Event influence scale $\sigma_{\mathrm{event}}$ (m)"}
         xs = [s["sweep_value"] for s in summaries]
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
         for ax, metric in zip(axes, ("PM", "PF")):
