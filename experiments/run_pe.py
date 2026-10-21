@@ -24,13 +24,12 @@ from network.run_pm_pf_comparison import (
     GEOMETRY_FLAGS, evaluate_shared_trials, load_detector, validate_pair,
 )
 from network.run_varing_SNR import format_snr_value, parse_snr_values
-from network.run_varing_number_of_users import parse_num_users
 from network.run_varying_l import parse_pilot_lens
 from network.train import build_args, build_model_config, build_system_config, resolve_device, run_training
 
 
 SWEEPS = {"L": ("pilot_len", parse_pilot_lens("")),
-          "N": ("num_devices", parse_num_users("")),
+          "N": DEFAULT_SWEEPS["N"],
           "SNR": ("snr_db", parse_snr_values("")),
           "M": DEFAULT_SWEEPS["M"],
           "event_sigma_m": DEFAULT_SWEEPS["event_sigma_m"]}

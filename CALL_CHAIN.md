@@ -1810,3 +1810,50 @@ python covariance_based/run_pe_experiments.py --stage plot --sweeps M event_sigm
 各点四方法8次共享MC、严格权重重载、原始分数/指标/哈希及全部数据/图检查通过。
 两个真实独立CLI的只绘图模式通过，Pe图已视觉检查。短测仅在/private/tmp/giht_new_pe_261019.rrMLkp/，
 不代表正式性能；未启动正式100epoch训练/1000次扫描，未改已有实验数据，未验证CUDA/BF16，未提交或推送。
+
+### 16.40 调整用户数量N的Pe扫描范围（261020）
+
+按用户要求，将Pe随N变化的默认取值改为[100,140,180,220,260,300]，即100至300、间隔40。
+covariance_based.run_monte_carlo.DEFAULT_SWEEPS集中定义该列表；experiments.run_pe.SWEEPS的N项
+直接继承该配置，不再读取旧loss扫描入口的parse_num_users。GI-HT、HT、MLE及Box-NNLS因此一致，
+run_pe_vs_N、通用Pe入口和传统入口的训练、评估及只绘图阶段均使用新范围，显式--values仍可覆盖。
+
+调用链：network/run_pe_vs_N.py或通用/传统Pe入口 -> experiments.run_pe.main
+-> sweep_points(N) -> 逐点training_args/prepare_models及evaluate_shared_trials
+-> save_method_result/exact_min_pe -> refresh_sweep。原单独MLE入口的--sweep N同步新默认。
+输出仍为result_261015/pe_vs_N，点标签为N100/N140/N180/N220/N260/N300；
+新汇总仅选择请求点，旧点数据/权重保留，不删除或自动重新计算已有结果。
+
+其他四轴的范围、默认场景N200及未扫描参数、模型/训练loss/Pe定义和求解器均不变。
+旧network/run_varing_number_of_users.py的loss-vs-N默认范围保持不变，避免改动无关实验。
+根README及协方差README更新当前Pe范围；Modify log追加本次记录。
+
+```bash
+python covariance_based/run_pe_experiments.py --sweeps N
+python network/run_pe_vs_N.py --device cuda
+python covariance_based/run_pe_experiments.py --stage plot --sweeps N --allow-different-observations
+```
+
+验证：80项测试、源码编译及diff检查通过；新增四方法/三阶段默认范围、只绘图选择、
+其他场景字段隔离及旧loss范围不变的回归检查。六个N值下GI-HT/HT共12次CPU数据生成、
+完整base网络前向、原始loss及反向有限性检查通过；不写权重或实验输出。
+未启动正式100epoch训练/1000次MC扫描，未改已有结果，未验证CUDA/BF16，未提交或推送。
+
+### 16.41 清理旧Pe-vs-N实验，由新范围结果原位替换（261020）
+
+按用户要求不再保留原N=[50,100,150,200,250]实验，删除本地result_261015/pe_vs_N整棵目录，
+共151个文件：五个旧点的四方法测试数据/多方法PM-PF图、汇总表/图/配置、两网络权重及train.log。
+同时删除logs/neural_N.log、neural_N_restart.log及其两个.gz副本，共4个N专用控制台日志。
+删除包含旧N100模型，避免新列表中重合的N100自动复用旧checkpoint；本次合计删除155个文件。
+
+新N=[100,140,180,220,260,300]实验仍输出result_261015/pe_vs_N，运行时由现有流程创建目录，
+不需要新目录或改动输出路径。程序本身不新增自动清理行为，训练loss/模型/求解器/Pe定义不变。
+服务器文件未被本地操作改变；服务器如仍有旧N实验，应先停止该目录的写入任务，
+仅清理其result_261015/pe_vs_N后再重跑，防止旧模型复用及新旧结果混合。
+传统和网络两阶段不要在同一共享N目录同时写入，生成新结果后不要再次清理。
+
+根README、协方差README与本地结果指南同步替换策略，历史记录保持原文，Modify log追加本次记录。
+删除前后对其余582个文件进行SHA-256核对，仅结果树根.DS_Store被系统更新；
+其中README之后按上述要求主动更新，其余580个非目标文件内容完全不变。
+L/SNR/M/event_sigma_m、loss_vs_epoch的结果/权重/日志全部保留；整个结果树继续忽略，未上传。
+本次仅清理旧实验及更新文档，不运行训练/测试/绘图，不改实验代码，不提交或推送。

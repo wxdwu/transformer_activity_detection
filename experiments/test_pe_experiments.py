@@ -130,9 +130,40 @@ class PeExperimentTests(unittest.TestCase):
         for stage in ("train-evaluate", "evaluate", "plot"):
             args = run_pe.parse_args(["--stage", stage], ("GI-HT", "HT"), "train-evaluate", fixed_sweep="L")
             self.assertEqual([value for value, _ in run_pe.sweep_points("L", args.values)], expected)
-        self.assertEqual(run_pe.SWEEPS["N"][1], [50, 100, 150, 200, 250])
+        self.assertEqual(run_pe.SWEEPS["N"][1], [100, 140, 180, 220, 260, 300])
         self.assertEqual(run_pe.SWEEPS["SNR"][1], [10, 12, 14, 16, 18, 20])
         self.assertEqual(cfg.pilot_len, 10)
+
+    def test_default_n_sweeps_match_for_all_methods_and_stages(self) -> None:
+        from covariance_based.run_monte_carlo import experiment_points, parse_args
+        from network.run_varing_number_of_users import parse_num_users
+
+        expected = [100, 140, 180, 220, 260, 300]
+        points = [(value, f"N{value:03d}") for value in expected]
+        self.assertEqual(run_pe.sweep_points("N"), points)
+        base = run_pe.build_system_config(run_pe.build_args())
+        legacy = experiment_points(base, parse_args(["--sweep", "N"]))
+        self.assertEqual([cfg.num_devices for _, _, cfg in legacy], expected)
+        for _, _, cfg in legacy:
+            self.assertEqual(asdict(cfg), {**asdict(base), "num_devices": cfg.num_devices})
+        for methods in (("GI-HT", "HT"), ("Covariance", "Box-NNLS")):
+            for stage in ("train-evaluate", "evaluate", "plot"):
+                cli = run_pe.parse_args(["--stage", stage], methods, stage, fixed_sweep="N")
+                self.assertEqual(run_pe.sweep_points("N", cli.values), points)
+        for value in expected:
+            for method in ("GI-HT", "HT"):
+                args = run_pe.training_args(cli, "N", value, Path("/tmp/pe_args"), method)
+                self.assertEqual(asdict(run_pe.build_system_config(args)),
+                                 {**asdict(base), "num_devices": value})
+        with TemporaryDirectory() as temporary, patch.object(run_pe, "refresh_sweep") as refresh, \
+                patch.object(run_pe, "run_training") as train, \
+                patch.object(run_pe, "evaluate_shared_trials") as evaluate:
+            run_pe.main(["--stage", "plot", "--sweeps", "N", "--out-root", temporary])
+            refresh.assert_called_once_with(Path(temporary) / "pe_vs_N", "N", "num_devices", points, "log",
+                                            allow_different_observations=False)
+            train.assert_not_called()
+            evaluate.assert_not_called()
+        self.assertEqual(parse_num_users(""), [50, 100, 150, 200, 250])
 
     def test_antenna_and_event_scale_sweeps_have_matching_defaults_and_labels(self) -> None:
         from covariance_based.run_monte_carlo import experiment_points, parse_args
@@ -161,7 +192,8 @@ class PeExperimentTests(unittest.TestCase):
 
     def test_new_neural_entry_points_select_only_their_own_sweep(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        for script, sweep in (("run_pe_vs_M.py", "M"), ("run_pe_vs_event_sigma.py", "event_sigma_m")):
+        for script, sweep in (("run_pe_vs_N.py", "N"), ("run_pe_vs_M.py", "M"),
+                              ("run_pe_vs_event_sigma.py", "event_sigma_m")):
             with self.subTest(script=script), patch.object(run_pe, "main") as main:
                 runpy.run_path(str(root / "network" / script), run_name="__main__")
                 main.assert_called_once_with(default_methods=("GI-HT", "HT"), default_stage="train-evaluate",
@@ -214,7 +246,7 @@ class PeExperimentTests(unittest.TestCase):
     def test_training_scene_changes_only_the_swept_field_and_geometry_flags(self) -> None:
         cli = run_pe.parse_args([], ("GI-HT", "HT"), "train-evaluate")
         original = run_pe.build_system_config(run_pe.build_args())
-        for sweep, value in (("L", 16), ("N", 250), ("SNR", 12.0), ("M", 128), ("event_sigma_m", 60.0)):
+        for sweep, value in (("L", 16), ("N", 300), ("SNR", 12.0), ("M", 128), ("event_sigma_m", 60.0)):
             for method in ("GI-HT", "HT"):
                 args = run_pe.training_args(cli, sweep, value, Path("/tmp/pe_args"), method)
                 expected = {**asdict(original), run_pe.SWEEPS[sweep][0]: value}

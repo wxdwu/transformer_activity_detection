@@ -81,7 +81,7 @@ python covariance_based/run_monte_carlo.py --sweep N
 python covariance_based/run_monte_carlo.py --sweep SNR
 ```
 
-Defaults: `L=[4,6,...,14]`, `N=[50,100,150,200,250]`, and
+Defaults: `L=[4,6,...,14]`, `N=[100,140,180,220,260,300]`, and
 `SNR=[10,12,14,16,18,20]`. Additional sweeps are
 `M=[32,48,64,80,96,112,128]` and `event_sigma_m=[60,70,...,120]` meters.
 Only the swept field changes; other parameters keep
@@ -825,10 +825,17 @@ CUDA_VISIBLE_DEVICES=5 python network/run_loss_vs_epoch.py --device cuda --epoch
 ## Minimum PM+PF Sweep Experiments (261015)
 
 `python covariance_based/run_pe_experiments.py` runs covariance MLE and
-Box-NNLS on L=4,6,...,14, N=50,100,...,250, SNR=10,12,...,20 dB,
+Box-NNLS on L=4,6,...,14, N=100,140,180,220,260,300, SNR=10,12,...,20 dB,
 M=32,48,...,128 and event_sigma_m=60,70,...,120 m, matching the Transformer
 experiment lists. The unswept parameters use the final sigma100, lambda1,
 peak-trigger0.9 event scene. Default MC count is 1000 per point.
+The N list is shared with GI-HT/HT for training, evaluation and plotting.
+The previous N-point data, checkpoints and N-specific console logs were cleared
+locally so the new results replace them in `result_261015/pe_vs_N/`.
+Before restarting on the server, stop any N jobs and clear its old `pe_vs_N/`
+directory too if it still exists; completed matching checkpoints would otherwise
+be reused. Runners do not delete old results automatically.
+Explicit `--values` overrides the defaults. The earlier loss-only N runner is unchanged.
 
 One threshold per method/point minimizes PM+PF over the entire MC set using
 all distinct score breakpoints, including endpoints. This is an offline

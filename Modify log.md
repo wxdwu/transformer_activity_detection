@@ -447,3 +447,21 @@ experiments/pe_metrics.py # 新增两类Pe横轴标签和单位，精确阈值�
 文档 # 根README、covariance_based/README.md和本地结果README同步；CALL_CHAIN仅追加16.39，提供传统、服务器并行和收集后只绘图指令
 验证 # 79项测试及源码编译通过；临时M32/M128/sigma60/sigma120四点各跑两网络完整base、2epoch×1步/batch4/eval1，16个epoch均skip=0；四方法各点MC8、权重严格重载、同点观测哈希及数据/指标/图片检查通过
 CLI与图 # 两个独立CLI只绘图模式通过，Pe图视觉检查通过，单方法目录无图；短测仅在/private/tmp/giht_new_pe_261019.rrMLkp/，不代表正式性能，未正式训练/扫描，未验证CUDA/BF16，未提交或推送
+
+261020:
+47、调整Pe随用户数量N变化实验的默认范围：
+covariance_based/run_monte_carlo.py # DEFAULT_SWEEPS的N改为100至300、间隔40，即[100,140,180,220,260,300]；原单独MLE扫描同步
+experiments/run_pe.py # N列表直接继承DEFAULT_SWEEPS，不再借用旧loss扫描解析器；GI-HT/HT/MLE/Box-NNLS的训练、评估和绘图默认一致，--values仍可覆盖
+范围与输出 # 仅改变N轴扫描列表，其他轴/默认场景/模型/loss/Pe/求解器不变；仍输出result_261015/pe_vs_N，新汇总仅含请求点，既有结果不删除；旧loss-vs-N实验范围不变
+文档 # README.md及covariance_based/README.md更新Pe范围；CALL_CHAIN仅追加16.40
+验证 # 80项测试、源码编译和diff检查通过；覆盖四方法/三阶段范围、N独立入口、只绘图选择和场景参数隔离；六个N点两网络共12次CPU数据/完整base前向/原始loss/反向有限性检查通过，不写实验输出
+限制 # 不跑正式100epoch或1000次MC，不改已有实验结果，未验证CUDA/BF16，未提交或推送
+
+261020:
+48、清理旧不同N的Pe实验，由新六点结果原位替换：
+删除范围 # result_261015/pe_vs_N整目录151文件，含N050/N100/N150/N200/N250四方法数据/图、汇总及GI-HT/HT权重和train.log；另删logs/neural_N.log、neural_N_restart.log及两份.gz，共155文件
+替换方式 # 新N100/140/180/220/260/300继续写入原pe_vs_N路径，旧N100权重也删除以确保重训；不新增自动删除功能，不改loss/模型/算法
+服务器说明 # 本地清理不影响服务器；服务器旧N目录应在停止写入任务后单独清理，再重跑和收集新结果，避免复用旧checkpoint或混入旧数据
+保留验证 # 原582个非目标文件SHA-256核对只有系统更新结果树根.DS_Store；随后主动更新结果README，其余580文件内容不变，其他实验的图/数据/权重/日志完整保留
+文档 # README.md、covariance_based/README.md和本地结果README说明替换方式；CALL_CHAIN仅追加16.41，历史段落不改
+限制 # 未训练/测试/重绘，未修改实验代码，结果继续整体忽略，未提交或推送

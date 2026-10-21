@@ -127,6 +127,13 @@ are collected. The general Pe runner now includes all five sweep axes; specify
 `--sweeps` to run only a subset. Default MC count is 1000 per point for every method. All new
 outputs are organized in `result_261015/`. The earlier loss-only runners now
 save under `result_261015/loss_sweeps/`; their loss metric is unchanged.
+The Pe N sweep defaults to `N=[100,140,180,220,260,300]` for all four methods
+in training, evaluation and plotting. The earlier loss-only N runner retains
+its original list. The previous Pe-vs-N results and checkpoints were cleared
+locally; the six new points replace them under the same `pe_vs_N/` path.
+On the server, stop any N jobs and clear the old `result_261015/pe_vs_N/`
+before restarting if it still exists, so N=100 cannot reuse an old checkpoint.
+The runners do not delete results automatically. Explicit `--values` overrides the defaults.
 The result tree is local-only and ignored by Git. See
 [the experiment call chain](CALL_CHAIN.md) for server commands, sweep overrides,
 output organization and the offline threshold-selection convention.

@@ -50,7 +50,7 @@ PAPER_EVENT_TEST_OUTPUT_ROOT = ROOT / "checkpoint" / "covariance_261014_paper_ev
 PLOT_MIN_PROBABILITY = 1e-4
 DEFAULT_SWEEPS = {
     "L": ("pilot_len", list(range(4, 15, 2))),
-    "N": ("num_devices", list(range(50, 251, 50))),
+    "N": ("num_devices", list(range(100, 301, 40))),
     "SNR": ("snr_db", list(range(10, 21, 2))),
     "M": ("num_antennas", list(range(32, 129, 16))),
     "event_sigma_m": ("event_sigma_m", list(range(60, 121, 10))),
