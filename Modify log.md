@@ -465,3 +465,89 @@ experiments/run_pe.py # N列表直接继承DEFAULT_SWEEPS，不再借用旧loss�
 保留验证 # 原582个非目标文件SHA-256核对只有系统更新结果树根.DS_Store；随后主动更新结果README，其余580文件内容不变，其他实验的图/数据/权重/日志完整保留
 文档 # README.md、covariance_based/README.md和本地结果README说明替换方式；CALL_CHAIN仅追加16.41，历史段落不改
 限制 # 未训练/测试/重绘，未修改实验代码，结果继续整体忽略，未提交或推送
+
+261022:
+49、合并服务器下载的M/N/event_sigma_m实验并生成四方法合图：
+合并范围 # result_261015_2 -> result_261015，M7点/N6点/sigma7点；补齐GI-HT/HT逐点数据、权重及日志，保留源目录和本地MLE/Box-NNLS原始结果
+数量 # 新增323文件（200逐点文件/80权重/40训练日志/3控制台日志）；源神经汇总不覆盖本地汇总，由既有只绘图流程重绘三组共75个派生文件
+验证 # 场景/MC1000/seed42/epoch100/batch128一致；80组原始分数/精确曲线/Pe指标复核，40个last.pt严格加载且哈希与评估记录一致、80权重CRC通过；40训练日志共4000epoch均skip=0
+传输保护 # 首次检查时下载仍在进行，等待模型完整后再复制，不把未完成的权重当作可用checkpoint
+观测策略 # 三组共20点传统与神经观测哈希不同，组内一致，活动标签一致；沿用--allow-different-observations只合并同场景曲线，原指标和哈希不改，汇总配置记录实际来源
+输出 # 三组Pe汇总CSV/PNG/SVG/PDF及20点PM-PF合图，CSV分别28/24/28行，Pe保持对数轴；23个PNG非空白，三张Pe图视觉检查通过
+保留 # 原579个非目标文件SHA-256不变，其他L/SNR/loss_vs_epoch实验保留；.gitignore新增/result_261015_2/，两个结果目录均只留本地
+文档 # 本地新增result_261015/MERGE_REPORT_261022.md；CALL_CHAIN仅追加16.42
+限制 # 不改模型/训练loss/数据生成/求解器/Pe定义，不训练或重新MC评估，不提交或推送
+
+261022:
+50、撰写论文Section IV实验部分并整理六张论文用图：
+paper_drafts/section_iv_261022/section_iv.tex # 完整英文实验稿，三个subsection，包含真实实验设置、基线定义、PM/PF与最优Pe口径、六图讨论和LaTeX图表引用；不覆盖用户原PDF
+references.bib、preview.tex、author_notes.md # 核实HT与协方差ML/NNLS期刊条目，提供IEEEtran包装和独立作者核验说明；参考本地及网上IEEE期刊原文的写法
+build_figures.py # 只读9个既有CSV，按loss/epoch、默认PM-PF、Pe/N、Pe/sigma、Pe/M、Pe/SNR顺序输出六图；不训练、不生成新测试样本，不改原始指标
+输出 # result_261015/paper_261022/figures内18个PDF/PNG/SVG及输入SHA-256来源记录；3.5英寸单栏、嵌入字体、Pe/PM-PF对数轴，Pe图例移到图框上方避免遮挡，旧图保留
+口径 # 默认PM-PF采用M032四方法数据，与loss实验同场景但不同训练；HT明确为covariance_rows无几何对照，不说原flat模型原样复现；不补写未完成的消融、延迟、显著性或跨配置免重训泛化结论
+一致性 # 主动披露无硬截断Gaussian/事件数截断3/背景0.005/实测SNR及全平面G近似，作者说明指出与现稿Section II的差异；不擅改模型或实验来迎合论文
+验证 # 原始CSV哈希不变；六PDF逐图渲染与字体/完整性检查通过；默认PF0.05处PM从完整精确曲线核对，Pe降幅/活动数/epoch loss已复核；脚本编译及LaTeX静态引用结构检查通过
+限制 # 本地无LaTeX引擎，未完整编译IEEEtran正文；不重新训练/MC测试，不改损失或求解器，图像结果继续Git忽略，CALL_CHAIN仅追加16.43，未提交或推送
+
+261022:
+51、按作者五点意见修订Section IV及论文六图：
+section_iv.tex # Table I增加6pt外侧留白并保持单栏总宽；删除实验部分所有小标题；六项实验先说明测试目的再讨论结果，保留既有数值、引用和公式顺序
+方法名称 # 正文、图注和新论文图统一Covariance-MLE/Covariance-NNLS；原始CSV内部标识不改，旧实验图不覆盖
+build_figures.py # 四张Pe图纵轴仅标P_e^star；图例全部在图内，N/sigma右下、M/SNR右上，M/SNR扩展顶部范围且SNR双列以免遮挡，不改对数比例或数据
+集成 # section_iv.tex默认figures目录，preview.tex覆盖为本地路径；同步author_notes，更新六PDF上传包并新增完整Section IV/参考文献/六PDF整包，输出仍在result_261015/paper_261022
+验证 # 九个源CSV哈希不变，六PDF渲染及名称/符号检查通过；图例边界均在坐标轴内且不与曲线路径相交；脚本编译、LaTeX静态检查、压缩包成员及哈希检查通过
+限制 # 无本地LaTeX引擎，不宣称完整编译；不改模型/loss/求解器/原始指标，不训练或重测，CALL_CHAIN仅追加16.44；结果继续Git忽略，未提交或推送
+
+261022:
+52、基于用户上传的最新版全文修订实验Section IV：
+输入 # 桌面14:04版TEX与ZIP内全文逐字节相同，查看PDF第9至11页；保留用户最新三个subsection及已精简设置，不回退到先前无小标题版本
+输出 # 新增paper_drafts/section_iv_261022_uploaded/section_iv.tex和revision_notes.md，原桌面TEX/PDF/ZIP及旧草稿不动
+表格与基线 # Settings/Value两列含表头均居中，保留6pt留白和原表项；三方法改为简短itemize，沿用原Bib键，删除冗长求解器细节，保留共同的信息条件
+衔接 # loss与PM-PF共用实验目的段；四参数讨论改用不同自然句式，不复述横轴扫描范围，保留定量比较点、实验结果和解释
+保留验证 # 所有公式环境/标签/图注/图片引用逐字不变，三个小节标题不变；上传源TEX哈希不变，LaTeX括号/环境/引用及ZIP内参考文献和六图目标检查通过
+限制 # 当前最优Pe自动编号(65)，不强制编号；无本地LaTeX引擎，未编译新表格，不重绘图/改数据/训练/重测，CALL_CHAIN仅追加16.45，未提交或推送
+
+261022:
+53、最新稿场景图裁剪、参考文献区分与loss学习率节点标注：
+输入与输出 # 核对桌面18:13版全文；新片段/Bib/说明/裁剪脚本位于paper_drafts/revision_261022_figures，两个PDF及loss的PNG/SVG/来源记录位于output/pdf/giht_261022；桌面源文件不动
+场景图 # 仅调整页面框裁掉外围白边并保留6pt留白，959.76x540pt变为789x512pt，原矢量/文字/内容流保持；Section II开头引用，Signal Model前用双栏figure*以保留图例可读性，编号自动顺延
+文献 # MLE用Wang等TIT Dec.2024、NNLS用Zarucha等TIT Aug.2026，原文方法及Crossref正式卷期页码核实；明确单小区常规CD和NNLS额外上界，不改变或冒称复现其他新算法
+引言 # 仅替换ITU-R/IMT-2030首句，沿用已有gao2024学术综述，原段后续不动，不新增引言Bib
+loss图 # build_figures.py增加90/97虚线和After epoch标签，--loss-only只重绘本图；确认实际新lr用于91/98轮，图注说明每次乘0.1；旧图和200条原始loss不改
+验证 # 两PDF渲染检查通过，裁剪前后内容流/文字相同及哈希核对；200个loss值与横坐标一致、标注无曲线/图例遮挡；两条绘图代码路径、静态LaTeX/Bib/源码编译/diff检查通过
+范围 # README提示空间PPP强度与每间隔事件均值的区别，不擅改场景；无LaTeX引擎，未编译全文，不训练/重测/提交/推送，CALL_CHAIN仅追加16.46
+
+261022:
+54、新版场景图进一步紧裁并保留输入文件名：
+输入输出 # 读取论文图/event_triggered_massive_access.pdf，输出output/pdf/giht_261022/event_triggered_massive_access.pdf及来源JSON；原件、旧裁图和loss图不动
+裁剪 # 原页面789x512pt，约6pt白边收紧至1.5pt，成品779.5x503pt；仅调整页面框，保留所有矢量/文字，不改变内部布局
+验证 # 内容流与文本完全一致，输入哈希不变，单页PDF及单栏比例渲染检查通过，底部图例和其他边缘元素完整
+范围 # 复用既有裁剪脚本，不改模型/数据/绘图算法，不提交或推送，CALL_CHAIN仅追加16.47
+
+261022:
+55、改用用户确认的带连字符最新版场景图裁剪：
+文件 # 输入论文图/event-triggered_massive_access.pdf（19:11版），输出output/pdf/giht_261022/event-triggered_massive_access.pdf和来源JSON，保持输入文件名，不覆盖源件或上一份下划线输出
+裁剪 # 新版具有两行图例；959.76x540pt紧裁至629.5x516.5pt，保留1.5pt边距，仅改页面框，不动设备/文字/矢量内容
+验证 # 内容流和提取文字一致、源哈希核对通过，完整图及单栏比例渲染检查通过；CALL_CHAIN仅追加16.48，不改实验/正文，不提交或推送
+
+261022:
+56、按用户19:15再次更新的场景图重新裁剪：
+输入输出 # 确认带连字符源PDF哈希已变，更新output/pdf/giht_261022/event-triggered_massive_access.pdf和来源JSON，文件名不变，源件不动
+验证 # 页面624.5x516.5pt、边距1.5pt；内容流/文字与新版源件一致，源哈希核对通过，整图和单栏比例渲染检查完整；CALL_CHAIN仅追加16.49，不改正文/实验，不提交或推送
+
+261022:
+57、按再次更新的场景源图重做同名裁剪：
+更新 # 核实源PDF哈希变化后重新裁剪，output/pdf/giht_261022/event-triggered_massive_access.pdf及JSON更新，原件不动，文件名保持
+验证 # 页面624.5x516.5pt、1.5pt留白；内容流/文字/源哈希核验通过，整图与单栏比例渲染完整；CALL_CHAIN仅追加16.50，不改正文/实验/脚本，不提交或推送
+
+261022:
+58、源图再次更新后重新同名紧裁：
+输出 # 更新output/pdf/giht_261022/event-triggered_massive_access.pdf及JSON，624.5x516.5pt、1.5pt留白，原件不动
+验证 # 新源哈希/内容流/文字核验及整图、单栏渲染检查通过；CALL_CHAIN仅追加16.51，不改正文/实验/脚本，不提交或推送
+
+261026:
+59、裁剪三张最新论文结构图的外围白边：
+输入输出 # 读取论文图/空间几何信息示意图.pdf、fig.2.pdf、fig.3.pdf，输出output/pdf/giht_261026_cropped下三个同名PDF和来源JSON，外部原件不动
+裁剪 # 保留1.5pt安全边距，三图分别为242x69.75pt、853.5x350.5pt、396.72x172.5pt，不调整内部布局、模块、公式、箭头或配色
+验证 # 源文件SHA-256不变，三份输出单页可读，全部非空白文本字符一致，4倍分辨率逐图检查边缘完整；系统PDFKit重新封装但未栅格化，内容流和部分文本抽取空格不声称逐字节一致
+范围 # 临时脚本/预览仅在/private/tmp；不改正文、模型、训练或实验结果，CALL_CHAIN仅追加16.52，不提交或推送
