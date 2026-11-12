@@ -593,3 +593,9 @@ loss图 # build_figures.py增加90/97虚线和After epoch标签，--loss-only只
 修订 # 直接引用原式1，删除未被后文使用的X/行支撑/式7说明；保留minimize / subject to及既有协方差/二元约束，去掉need not、without requiring等补充性辩解，以正面文字解释统计关系和GI-HT衔接
 范围 # 只改候选模板及skill约定，不修改原Paper文件、模型、损失、数据或实验，不增加精确MAP最优性断言
 验证 # 官方skill校验及LaTeX定界符/环境/引用检查通过，不完整编译、不训练/重测/提交/推送，CALL_CHAIN仅追加16.58
+
+261112:
+66、提交本地文献删除记录并停止跟踪文献目录：
+文件 # 移除pdf文献目录下3份PDF及对应3份TXT的Git记录；本地目录已删除，不恢复或额外删除文件，.gitignore新增/pdf文献/以忽略后续本地文献
+同步 # 推送至wxdwu及AoChenBjtu的main3_261013分支，保持upstream为wxdwu/main3_261013；仅更新当前分支文件树，不改写历史或其他分支
+范围 # 不纳入.DS_Store变化，不修改模型/训练/生成器/实验结果，CALL_CHAIN追加16.59
