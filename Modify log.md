@@ -551,3 +551,45 @@ loss图 # build_figures.py增加90/97虚线和After epoch标签，--loss-only只
 裁剪 # 保留1.5pt安全边距，三图分别为242x69.75pt、853.5x350.5pt、396.72x172.5pt，不调整内部布局、模块、公式、箭头或配色
 验证 # 源文件SHA-256不变，三份输出单页可读，全部非空白文本字符一致，4倍分辨率逐图检查边缘完整；系统PDFKit重新封装但未栅格化，内容流和部分文本抽取空格不声称逐字节一致
 范围 # 临时脚本/预览仅在/private/tmp；不改正文、模型、训练或实验结果，CALL_CHAIN仅追加16.52，不提交或推送
+
+261104:
+60、核查最新版论文的符号定义、维度与图文对应，提供手工替换diff：
+输入输出 # 以桌面最新13页PDF为准，新增paper_drafts/symbol_audit_261104/SYMBOL_DIFF.md；19组直接修订、4类需确认的实现一致性问题、64段改前/改后LaTeX，均给出页码/公式/段落定位
+符号 # 明确K_e为可取0的事件总数及k为事件索引，按纯事件模型替换空乘积解释；补全K_g/T/投影/Norm/FFN/W_s/epsilon_rho等定义，已有图消息参数定义不重复
+公式图文 # 核查式12/36行列方向、Delta_G与alpha_l E_G关系、L_p统一、G与稀疏G引用、失效引用、图1事件标签、图4分母d_h及gamma正负解释条件，不改原损失与参数约束
+边界 # 代码只用于交叉核对；背景活跃、事件数截断、PPP强度口径、Gaussian截断/图近似、实测SNR等需作者确认，不擅自改正文模型或生成新的实验结果
+验证 # 全文读取并渲染关键页，64段片段静态检查通过，原PDF SHA-256不变；未修改原PDF/TEX/PPTX或训练代码，未完整LaTeX编译，不训练/重测/提交/推送，CALL_CHAIN仅追加16.53
+
+261104:
+61、按作者确认的论文场景修订符号审校清单：
+文件 # 更新paper_drafts/symbol_audit_261104/SYMBOL_DIFF.md的A01/A02及B01--B03，提供手工替换位置与改前/改后LaTeX，不修改外部原稿
+场景 # 不考虑背景活跃；事件数服从Poisson(lambda_1)，默认lambda_1=1，不乘小区面积；原始Gaussian导频保留逐列单位范数归一化，缩放B按Section II-A另行构造
+边界 # 当前实现的背景0.005、事件数截断3、导频仅单位期望能量仍作为差异如实提示，不因论文口径确认而宣称旧结果已一致，不修改生成器/模型/损失/数据或其他未确认场景
+验证 # LaTeX片段括号/数学定界符/环境配对及diff空白检查通过，原PDF哈希不变；不完整编译、不训练/重测/提交/推送，CALL_CHAIN仅追加16.54
+
+261104:
+62、更正事件数Poisson参数的下标误读：
+文件 # 修订paper_drafts/symbol_audit_261104/SYMBOL_DIFF.md的A01/B02及摘要说明，统一采用论文原符号lambda_e=1，不使用数字1作为下标
+口径 # K_e服从Poisson(lambda_e)，不乘小区面积；第61条的lambda_1记录由本条更正，其他场景设定不变
+范围 # 仅修订手工修改清单并追加日志，不改原稿/代码/损失/实验，不提交或推送，CALL_CHAIN仅追加16.55
+
+261112:
+63、保存GI-HT论文修订skill并展开事件驱动检测问题的统计公式：
+输出 # 在Correlated Activation/giht-paper-revision创建5个文件：SKILL.md、agents/openai.yaml、references/project-context.md、references/formulation-notes.md、assets/problem-formulation.tex；不安装到全局skill目录
+修订 # 候选LaTeX替换整个Section II-C，直接描述活动检测；用条件协方差和log-det/trace项具体化观测证据，用共同潜在事件下Bernoulli乘积的期望表达几何诱导联合活动统计，不再从行稀疏开场
+边界 # 严格区分已知位置、几何矩阵摘要与完整联合先验，候选式为统计参考问题而非现有网络的精确MAP求解证明，不增加图平滑硬约束或更改训练损失；不改外部原稿/代码/实验
+验证 # 官方skill校验及元数据/链接/LaTeX定界符和引用检查通过，独立数值检查归一化/无事件/非独立性及似然展开，误差8.88e-16；PyYAML只装临时目录，未完整编译、不训练/重测/提交/推送，CALL_CHAIN仅追加16.56
+
+261112:
+64、保留物理观测式7并具体化minimize / subject to形式：
+文件 # 更新上级giht-paper-revision的SKILL.md、references/formulation-notes.md和assets/problem-formulation.tex，原Paper文件不动
+修订 # 保留X=A H、Y=B X+W及原公式标签；以a和辅助Sigma为优化变量，显式约束Sigma=B diag(a) B^H+sigma_w^2 I、a属于二元向量集合，几何联合活动统计继续作为软统计项
+边界 # 约束是已有信号模型的协方差关系，不新增图平滑/邻居相等假设，不修改损失/生成器/结果，不声称网络为精确MAP求解器
+验证 # 官方skill校验及LaTeX定界符/环境/引用检查通过，未全文编译、不训练/重测/提交/推送，CALL_CHAIN仅追加16.57
+
+261112:
+65、按最新意见删除重复式7并精简问题表述：
+文件 # 同步上级giht-paper-revision的SKILL.md、references/formulation-notes.md和assets/problem-formulation.tex，以本条覆盖此前保留辅助观测式的候选写法
+修订 # 直接引用原式1，删除未被后文使用的X/行支撑/式7说明；保留minimize / subject to及既有协方差/二元约束，去掉need not、without requiring等补充性辩解，以正面文字解释统计关系和GI-HT衔接
+范围 # 只改候选模板及skill约定，不修改原Paper文件、模型、损失、数据或实验，不增加精确MAP最优性断言
+验证 # 官方skill校验及LaTeX定界符/环境/引用检查通过，不完整编译、不训练/重测/提交/推送，CALL_CHAIN仅追加16.58
